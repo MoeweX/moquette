@@ -17,6 +17,9 @@
 package io.moquette.server;
 
 import io.moquette.BrokerConstants;
+import io.moquette.bridge.Bridge;
+import io.moquette.bridge.BridgeConfiguration;
+import io.moquette.bridge.BridgeInterceptHandler;
 import io.moquette.connections.IConnectionsManager;
 import io.moquette.interception.InterceptHandler;
 import io.moquette.server.config.*;
@@ -38,6 +41,7 @@ import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 import static io.moquette.logging.LoggingUtils.getInterceptorIds;
 
@@ -59,12 +63,19 @@ public class Server {
 
     private ScheduledExecutorService scheduler;
 
+    private Bridge bridge;
+
     public static void main(String[] args) throws IOException {
         final Server server = new Server();
         server.startServer();
         System.out.println("Server started, version 0.12-SNAPSHOT");
         //Bind  a shutdown hook
         Runtime.getRuntime().addShutdownHook(new Thread(server::stopServer));
+    }
+
+    private static File defaultConfigFile() {
+        String configPath = System.getProperty("moquette.path", null);
+        return new File(configPath, IConfig.DEFAULT_CONFIG);
     }
 
     /**
@@ -78,11 +89,6 @@ public class Server {
         IResourceLoader filesystemLoader = new FileResourceLoader(defaultConfigurationFile);
         final IConfig config = new ResourceLoaderConfig(filesystemLoader);
         startServer(config);
-    }
-
-    private static File defaultConfigFile() {
-        String configPath = System.getProperty("moquette.path", null);
-        return new File(configPath, IConfig.DEFAULT_CONFIG);
     }
 
     /**
@@ -172,6 +178,15 @@ public class Server {
         final long startTime = System.currentTimeMillis() - start;
         LOG.info("Moquette server has been started successfully in {} ms", startTime);
         m_initialized = true;
+
+        // Set up bridge
+        final BridgeConfiguration bridgeConfig = new BridgeConfiguration(config);
+        if (bridgeConfig.getHost() != null && bridgeConfig.getPort() != 0) {
+            bridge = new Bridge(bridgeConfig, this, scheduler);
+            final BridgeInterceptHandler bridgeInterceptHandler = new BridgeInterceptHandler(bridge);
+            addInterceptHandler(bridgeInterceptHandler);
+        }
+
     }
 
 
@@ -195,15 +210,21 @@ public class Server {
     }
 
     public void stopServer() {
+        bridge.shutdown();
         LOG.info("Unbinding server from the configured ports");
         m_acceptor.close();
         LOG.trace("Stopping MQTT protocol processor");
         m_processorBootstrapper.shutdown();
         m_initialized = false;
 
-		// calling shutdown() does not actually stop tasks that are not cancelled,
-		// and SessionsRepository does not stop its tasks. Thus shutdownNow().
+        // calling shutdown() does not actually stop tasks that are not cancelled,
+        // and SessionsRepository does not stop its tasks. Thus shutdownNow().
         scheduler.shutdownNow();
+        try {
+            scheduler.awaitTermination(10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
 
         LOG.info("Moquette server has been stopped.");
     }

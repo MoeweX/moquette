@@ -78,6 +78,8 @@ public final class BrokerConstants {
 
     public static final String STORAGE_CLASS_NAME = "storage_class";
 
+    public static final String BRIDGE_CONNECTIONS_PROPERTY_NAME = "bridge_connections";
+
     private BrokerConstants() {
     }
 }
