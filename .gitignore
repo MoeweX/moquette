@@ -6,12 +6,14 @@
 .idea/
 *.iml
 broker/target/
+broker/out
 client/target/
 parser_commons/target/
 netty_parser/target/
 netty_parser/target/
 parser_commons/target/
 distribution/target/
+distribution/build/
 broker/moquette.log
 broker/runner
 /bundle/target/
