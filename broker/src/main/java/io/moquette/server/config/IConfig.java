@@ -30,7 +30,7 @@ public abstract class IConfig {
 
     public static final String DEFAULT_CONFIG = "config/moquette.conf";
     public static final String LIST_DELIMITER = ",";
-    final Properties m_properties = new Properties();
+    Properties m_properties = new Properties();
 
     /**
      * Same interface as {@link Properties}

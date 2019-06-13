@@ -30,7 +30,6 @@ public class ResourceLoaderConfig extends IConfig {
 
     private static final Logger LOG = LoggerFactory.getLogger(ResourceLoaderConfig.class);
 
-    private final Properties m_properties;
     private final IResourceLoader resourceLoader;
 
     public ResourceLoaderConfig(IResourceLoader resourceLoader) {
