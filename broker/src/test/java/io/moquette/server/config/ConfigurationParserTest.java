@@ -18,10 +18,12 @@ package io.moquette.server.config;
 
 import org.junit.Before;
 import org.junit.Test;
+
+import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
-import java.text.ParseException;
 import java.util.Properties;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -43,7 +45,7 @@ public class ConfigurationParserTest {
     }
 
     @Test
-    public void parseEmpty() throws ParseException {
+    public void parseEmpty() throws IOException {
         Reader conf = new StringReader("  ");
         m_parser.parse(conf);
 
@@ -53,7 +55,7 @@ public class ConfigurationParserTest {
     }
 
     @Test
-    public void parseValidComment() throws ParseException {
+    public void parseValidComment() throws IOException {
         Reader conf = new StringReader("#simple comment");
         m_parser.parse(conf);
 
@@ -62,14 +64,8 @@ public class ConfigurationParserTest {
         assertTrue(m_parser.getProperties().isEmpty());
     }
 
-    @Test(expected = ParseException.class)
-    public void parseInvalidComment() throws ParseException {
-        Reader conf = new StringReader(" #simple comment");
-        m_parser.parse(conf);
-    }
-
     @Test
-    public void parseSingleVariable() throws ParseException {
+    public void parseSingleVariable() throws IOException {
         Reader conf = new StringReader("port 1234");
         m_parser.parse(conf);
 
@@ -78,9 +74,9 @@ public class ConfigurationParserTest {
     }
 
     @Test
-    public void parseCompleteFile() throws ParseException {
-        String content = "# This is initial m_config format \r\n" + "  \r\n" + "port 1234 \r\n"
-                + "host   localhost \r\n" + "fake  multi word string property\r\n";
+    public void parseCompleteFile() throws IOException {
+        String content = "# This is initial m_config format \r\n" + "  \r\n" + "port 1234\r\n"
+            + "host   localhost\r\n" + "fake  multi word string property\r\n";
         Reader conf = new StringReader(content);
         m_parser.parse(conf);
 
@@ -89,5 +85,22 @@ public class ConfigurationParserTest {
         assertEquals("1234", props.getProperty("port"));
         assertEquals("localhost", props.getProperty("host"));
         assertEquals("multi word string property", props.getProperty("fake"));
+    }
+
+    @Test
+    public void parseWithBridge() throws IOException {
+        Reader conf = new StringReader(
+            "port 1883\n" +
+                "host 0.0.0.0\n" +
+                "\n" +
+                "bridge_port 1884\n" +
+                "bridge_host 0.0.0.0\n" +
+                "\n" +
+                "bridge_connections \\\n" +
+                "10.0.2.254:1884,\\\n");
+
+        m_parser.parse(conf);
+        Properties props = m_parser.getProperties();
+        assertEquals("10.0.2.254:1884,", props.getProperty("bridge_connections"));
     }
 }

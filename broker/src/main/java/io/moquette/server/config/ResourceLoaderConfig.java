@@ -18,8 +18,9 @@ package io.moquette.server.config;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
 import java.io.Reader;
-import java.text.ParseException;
 import java.util.Properties;
 
 /**
@@ -54,29 +55,29 @@ public class ResourceLoaderConfig extends IConfig {
 
         if (configReader == null) {
             LOG.error(
-                    "The resource loader returned no configuration reader. ResourceLoader = {}, configName = {}.",
-                    resourceLoader.getName(),
-                    configName);
+                "The resource loader returned no configuration reader. ResourceLoader = {}, configName = {}.",
+                resourceLoader.getName(),
+                configName);
             throw new IllegalArgumentException("Can't locate " + resourceLoader.getName() + " \"" + configName + "\"");
         }
 
         LOG.info(
-                "Parsing configuration properties. ResourceLoader = {}, configName = {}.",
-                resourceLoader.getName(),
-                configName);
+            "Parsing configuration properties. ResourceLoader = {}, configName = {}.",
+            resourceLoader.getName(),
+            configName);
         ConfigurationParser confParser = new ConfigurationParser();
         m_properties = confParser.getProperties();
         assignDefaults();
         try {
             confParser.parse(configReader);
-        } catch (ParseException pex) {
+        } catch (IOException pex) {
             LOG.warn(
-                    "Unable to parse configuration properties. Using default configuration. "
+                "Unable to parse configuration properties. Using default configuration. "
                     + "ResourceLoader = {}, configName = {}, cause = {}, errorMessage = {}.",
-                    resourceLoader.getName(),
-                    configName,
-                    pex.getCause(),
-                    pex.getMessage());
+                resourceLoader.getName(),
+                configName,
+                pex.getCause(),
+                pex.getMessage());
         }
     }
 
