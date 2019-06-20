@@ -20,13 +20,13 @@ public class MqttCodecWrapper {
         List<Object> outList = new ArrayList<>();
         try {
             // TODO This may induce a serious performance hit (we could try subclassing MqttDecoder and working around its statefulness)
-            (new MqttDecoder()).decode(null, serializedMsg, outList);
+            (new MqttDecoder(10_000_000)).decode(null, serializedMsg, outList);
             LOG.info("Decoded MQTT message: {}", outList.get(0));
             return (MqttPublishMessage) outList.get(0);
         } catch (ClassCastException ex) {
             Object msg = outList.get(0);
             if (msg instanceof MqttMessage) {
-                LOG.error("Error while casting decoded message to MqttPublishMessage. Got MqttMessage instead: " + (MqttMessage) msg, ex);
+                LOG.error("Error while casting decoded message to MqttPublishMessage. Decoder result: " + ((MqttMessage) msg).decoderResult(), ex);
             } else {
                 LOG.error("Error while casting decoded message. Got this instead: " + msg, ex);
             }

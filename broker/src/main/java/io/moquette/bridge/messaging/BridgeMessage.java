@@ -13,4 +13,8 @@ public class BridgeMessage implements Serializable {
     public BridgeMessage(BridgeMessageType type) {
         this.type = type;
     }
+
+    public void release() {
+        // Do nothing by default
+    }
 }

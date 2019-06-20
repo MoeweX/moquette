@@ -20,4 +20,9 @@ public class BridgeMessagePublish extends BridgeMessage {
     public List<MqttPublishMessage> getPublishMessages() {
         return publishMessages;
     }
+
+    @Override
+    public void release() {
+        publishMessages.forEach(MqttPublishMessage::release);
+    }
 }

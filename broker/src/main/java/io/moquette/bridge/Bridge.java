@@ -34,7 +34,6 @@ public class Bridge {
     private final Bootstrap bootstrap = new Bootstrap();
     private final ServerBootstrap serverBootstrap = new ServerBootstrap();
     private final ConnectionStore connectionStore;
-    private final IdStore idStore = new IdStore();
     private final Server server;
     private EventLoopGroup serverParentGroup;
     private EventLoopGroup serverChildGroup;
@@ -158,7 +157,4 @@ public class Bridge {
         server.internalPublish(message, null);
     }
 
-    IdStore getIdStore() {
-        return idStore;
-    }
 }

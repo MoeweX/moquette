@@ -37,6 +37,7 @@ public class BridgeEncoder extends MessageToMessageEncoder<BridgeMessage> {
         } else {
             bytes = new byte[length];
             byteBufMsg.getBytes(byteBufMsg.readerIndex(), bytes);
+            byteBufMsg.release();
         }
 
         return bytes;

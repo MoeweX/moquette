@@ -170,4 +170,22 @@ public class BridgeIntegrationTest {
 
         System.out.println(receivedMessages);
     }
+
+    @Test
+    public void manualTest1() throws InterruptedException {
+        runTestInstance("1883", "1884", "127.0.0.1:2884");
+
+        while(true) {
+            Thread.sleep(1000);
+        }
+    }
+
+    @Test
+    public void manualTest2() throws InterruptedException {
+        runTestInstance("2883", "2884", "127.0.0.1:1884");
+
+        while(true) {
+            Thread.sleep(1000);
+        }
+    }
 }

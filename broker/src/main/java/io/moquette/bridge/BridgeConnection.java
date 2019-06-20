@@ -1,5 +1,9 @@
 package io.moquette.bridge;
-import io.moquette.bridge.messaging.*;
+
+import io.moquette.bridge.messaging.BridgeMessage;
+import io.moquette.bridge.messaging.BridgeMessageConnAck;
+import io.moquette.bridge.messaging.BridgeMessageConnect;
+import io.moquette.bridge.messaging.BridgeMessagePublish;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.handler.codec.mqtt.MqttPublishMessage;
@@ -80,16 +84,10 @@ public class BridgeConnection {
 
     private void handlePublish(BridgeMessagePublish incomingMessage) {
         LOG.debug("Received message to handlePublish: {}", incomingMessage);
-        // TODO Performance: Technically we should not need loop detection anymore...
-        if (isUnknownMessageId(incomingMessage.uid)) {
-            parent.getIdStore().add(incomingMessage.uid);
-            LOG.info("Doing internal publish to clients...");
-            for (MqttPublishMessage mqttPubMsg : incomingMessage.getPublishMessages()) {
-                // Internal handlePublish to interested clients
-                parent.internalPublish(mqttPubMsg);
-            }
-        } else {
-            LOG.info("Loop detected! Discarding... (msg_id: {})", incomingMessage.uid);
+        LOG.info("Doing internal publish to clients...");
+        for (MqttPublishMessage mqttPubMsg : incomingMessage.getPublishMessages()) {
+            // Internal handlePublish to interested clients
+            parent.internalPublish(mqttPubMsg);
         }
     }
 
@@ -98,11 +96,8 @@ public class BridgeConnection {
             if (!writeFuture.isSuccess() && !writeFuture.isCancelled()) {
                 LOG.error("Failed writing into channel to {}", channel.remoteAddress().toString(), writeFuture.cause());
             }
+            msg.release();
         });
-    }
-
-    private Boolean isUnknownMessageId(String id) {
-        return !id.equals("") && !parent.getIdStore().contains(id);
     }
 
     public Boolean isConnected() {
