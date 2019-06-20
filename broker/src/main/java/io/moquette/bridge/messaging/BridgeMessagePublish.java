@@ -21,8 +21,4 @@ public class BridgeMessagePublish extends BridgeMessage {
         return publishMessages;
     }
 
-    @Override
-    public void release() {
-        publishMessages.forEach(MqttPublishMessage::release);
-    }
 }

@@ -96,7 +96,6 @@ public class BridgeConnection {
             if (!writeFuture.isSuccess() && !writeFuture.isCancelled()) {
                 LOG.error("Failed writing into channel to {}", channel.remoteAddress().toString(), writeFuture.cause());
             }
-            msg.release();
         });
     }
 

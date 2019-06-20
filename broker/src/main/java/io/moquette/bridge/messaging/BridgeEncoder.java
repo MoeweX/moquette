@@ -20,6 +20,7 @@ public class BridgeEncoder extends MessageToMessageEncoder<BridgeMessage> {
         List<byte[]> serializedMessages = new ArrayList<>();
         for (MqttPublishMessage mqttPubMsg : msg.publishMessages) {
             ByteBuf byteBufMsg = MqttCodecWrapper.encodeMqttMessage(allocator, mqttPubMsg);
+            mqttPubMsg.release();
             serializedMessages.add(getByteArray(byteBufMsg));
         }
         msg.payload = new ArrayList<>(serializedMessages);
