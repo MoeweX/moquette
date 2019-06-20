@@ -23,8 +23,15 @@ public class MqttCodecWrapper {
             (new MqttDecoder()).decode(null, serializedMsg, outList);
             LOG.info("Decoded MQTT message: {}", outList.get(0));
             return (MqttPublishMessage) outList.get(0);
+        } catch (ClassCastException ex) {
+            Object msg = outList.get(0);
+            if (msg instanceof MqttMessage) {
+                LOG.error("Error while casting decoded message to MqttPublishMessage. Got MqttMessage instead: " + (MqttMessage) msg, ex);
+            } else {
+                LOG.error("Error while casting decoded message. Got this instead: " + msg, ex);
+            }
         } catch (Exception ex) {
-            LOG.error("Error while decoding MqttPublishMessage.", ex);
+            LOG.error("Error while decoding message.", ex);
         }
         return null;
     }

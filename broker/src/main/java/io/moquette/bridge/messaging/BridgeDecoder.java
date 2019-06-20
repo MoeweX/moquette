@@ -19,7 +19,8 @@ public class BridgeDecoder extends MessageToMessageDecoder<BridgeMessage> {
         List<MqttPublishMessage> deserializedMessages = new ArrayList<>();
         for (byte[] serializedMqttPub : msg.payload) {
             ByteBuf byteBufMsg = Unpooled.wrappedBuffer(serializedMqttPub);
-            deserializedMessages.add(MqttCodecWrapper.decodeMqttPublishMessage(byteBufMsg));
+            MqttPublishMessage message = MqttCodecWrapper.decodeMqttPublishMessage(byteBufMsg);
+            if (message != null) deserializedMessages.add(message);
         }
 
         msg.publishMessages = deserializedMessages;
