@@ -17,6 +17,11 @@ public class BridgeMessagePublish extends BridgeMessage {
         this.publishMessages.addAll(messages);
     }
 
+    @Override
+    public void retain() {
+        publishMessages.forEach(MqttPublishMessage::retain);
+    }
+
     public List<MqttPublishMessage> getPublishMessages() {
         return publishMessages;
     }

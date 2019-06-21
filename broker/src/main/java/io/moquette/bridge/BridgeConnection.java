@@ -92,6 +92,7 @@ public class BridgeConnection {
     }
 
     void writeAndFlush(BridgeMessage msg) {
+        msg.retain();
         channel.writeAndFlush(msg).addListener((ChannelFuture writeFuture) -> {
             if (!writeFuture.isSuccess() && !writeFuture.isCancelled()) {
                 LOG.error("Failed writing into channel to {}", channel.remoteAddress().toString(), writeFuture.cause());

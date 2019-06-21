@@ -31,7 +31,6 @@ public class BridgeInterceptHandler extends AbstractInterceptHandler {
             Field pubMsgField = msg.getClass().getDeclaredField("msg");
             pubMsgField.setAccessible(true);
             MqttPublishMessage pubMsg = (MqttPublishMessage) pubMsgField.get(msg);
-            pubMsg.retain();
 
             BridgeMessagePublish publishMessage = new BridgeMessagePublish(Arrays.asList(pubMsg));
             bridge.bridgePublish(publishMessage);

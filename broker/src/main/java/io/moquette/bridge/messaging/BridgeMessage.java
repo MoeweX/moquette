@@ -14,4 +14,8 @@ public class BridgeMessage implements Serializable {
         this.type = type;
     }
 
+    public void retain() {
+
+    }
+
 }
