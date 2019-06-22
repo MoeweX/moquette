@@ -1,8 +1,8 @@
-package io.moquette.bridge;
+package io.moquette.delaygrouping.bridge;
 
-import io.moquette.bridge.messaging.BridgeDecoder;
-import io.moquette.bridge.messaging.BridgeEncoder;
-import io.moquette.bridge.messaging.BridgeMessagePublish;
+import io.moquette.delaygrouping.bridge.messaging.BridgeDecoder;
+import io.moquette.delaygrouping.bridge.messaging.BridgeEncoder;
+import io.moquette.delaygrouping.bridge.messaging.BridgeMessagePublish;
 import io.moquette.server.Server;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.bootstrap.ServerBootstrap;

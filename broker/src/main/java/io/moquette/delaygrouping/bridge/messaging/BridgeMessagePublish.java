@@ -1,4 +1,4 @@
-package io.moquette.bridge.messaging;
+package io.moquette.delaygrouping.bridge.messaging;
 
 import io.netty.handler.codec.mqtt.MqttPublishMessage;
 

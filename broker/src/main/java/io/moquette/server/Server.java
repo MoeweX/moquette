@@ -17,9 +17,9 @@
 package io.moquette.server;
 
 import io.moquette.BrokerConstants;
-import io.moquette.bridge.Bridge;
-import io.moquette.bridge.BridgeConfiguration;
-import io.moquette.bridge.BridgeInterceptHandler;
+import io.moquette.delaygrouping.bridge.Bridge;
+import io.moquette.delaygrouping.bridge.BridgeConfiguration;
+import io.moquette.delaygrouping.bridge.BridgeInterceptHandler;
 import io.moquette.connections.IConnectionsManager;
 import io.moquette.interception.InterceptHandler;
 import io.moquette.server.config.*;

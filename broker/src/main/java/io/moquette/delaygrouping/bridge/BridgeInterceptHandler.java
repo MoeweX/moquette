@@ -1,6 +1,6 @@
-package io.moquette.bridge;
+package io.moquette.delaygrouping.bridge;
 
-import io.moquette.bridge.messaging.BridgeMessagePublish;
+import io.moquette.delaygrouping.bridge.messaging.BridgeMessagePublish;
 import io.moquette.interception.AbstractInterceptHandler;
 import io.moquette.interception.messages.InterceptPublishMessage;
 import io.netty.handler.codec.mqtt.MqttPublishMessage;

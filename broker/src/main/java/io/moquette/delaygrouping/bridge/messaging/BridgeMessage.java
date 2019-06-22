@@ -1,4 +1,4 @@
-package io.moquette.bridge.messaging;
+package io.moquette.delaygrouping.bridge.messaging;
 
 import java.io.Serializable;
 import java.util.UUID;

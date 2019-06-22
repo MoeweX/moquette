@@ -1,9 +1,9 @@
-package io.moquette.bridge;
+package io.moquette.delaygrouping.bridge;
 
-import io.moquette.bridge.messaging.BridgeMessage;
-import io.moquette.bridge.messaging.BridgeMessageConnAck;
-import io.moquette.bridge.messaging.BridgeMessageConnect;
-import io.moquette.bridge.messaging.BridgeMessagePublish;
+import io.moquette.delaygrouping.bridge.messaging.BridgeMessage;
+import io.moquette.delaygrouping.bridge.messaging.BridgeMessageConnAck;
+import io.moquette.delaygrouping.bridge.messaging.BridgeMessageConnect;
+import io.moquette.delaygrouping.bridge.messaging.BridgeMessagePublish;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.handler.codec.mqtt.MqttPublishMessage;
@@ -48,13 +48,13 @@ public class BridgeConnection {
     void handleMessage(BridgeMessage message) {
         LOG.info("Received message type {}: {}", message.type.name(), message);
         switch (message.type) {
-            case CONNECT:
+            case BridgeMessageType.CONNECT:
                 handleConnect((BridgeMessageConnect) message);
                 break;
-            case CONNACK:
+            case BridgeMessageType.CONNACK:
                 handleConnAck((BridgeMessageConnAck) message);
                 break;
-            case PUBLISH:
+            case BridgeMessageType.PUBLISH:
                 handlePublish((BridgeMessagePublish) message);
                 break;
             default:

@@ -1,5 +1,6 @@
-package io.moquette.bridge;
+package io.moquette.delaygrouping;
 
+import io.moquette.delaygrouping.bridge.BridgeConfiguration;
 import io.moquette.server.config.IConfig;
 import io.moquette.server.config.MemoryConfig;
 import org.junit.Test;

@@ -1,6 +1,6 @@
-package io.moquette.bridge;
+package io.moquette.delaygrouping.bridge;
 
-import io.moquette.bridge.messaging.BridgeMessage;
+import io.moquette.delaygrouping.bridge.messaging.BridgeMessage;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import org.slf4j.Logger;

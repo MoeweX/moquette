@@ -1,4 +1,4 @@
-package io.moquette.bridge;
+package io.moquette.delaygrouping.bridge;
 
 import io.moquette.BrokerConstants;
 import io.moquette.server.config.IConfig;

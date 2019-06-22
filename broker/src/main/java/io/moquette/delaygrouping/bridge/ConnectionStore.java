@@ -1,4 +1,4 @@
-package io.moquette.bridge;
+package io.moquette.delaygrouping.bridge;
 
 import java.net.InetSocketAddress;
 import java.util.List;
