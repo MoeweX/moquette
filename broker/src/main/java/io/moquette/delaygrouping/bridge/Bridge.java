@@ -143,7 +143,7 @@ public class Bridge {
 
     void notifyConnectionEstablished(BridgeConnection newConnection) {
         LOG.info("Established {}", newConnection);
-        connectionStore.add(newConnection);
+        connectionStore.addActualConnection(newConnection);
     }
 
     void bridgePublish(BridgeMessagePublish message) {

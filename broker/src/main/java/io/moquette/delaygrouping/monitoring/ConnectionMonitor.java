@@ -1,20 +1,11 @@
 package io.moquette.delaygrouping.monitoring;
 
+import io.moquette.delaygrouping.connections.ConnectionStore;
 import io.netty.bootstrap.Bootstrap;
-import io.netty.bootstrap.ServerBootstrap;
-import io.netty.channel.ChannelInitializer;
-import io.netty.channel.ChannelOption;
-import io.netty.channel.ChannelPipeline;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
 import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.channel.socket.SocketChannel;
-import io.netty.channel.socket.nio.NioServerSocketChannel;
-import io.netty.channel.socket.nio.NioSocketChannel;
-import io.netty.handler.codec.LineBasedFrameDecoder;
-import io.netty.handler.codec.string.StringDecoder;
-import io.netty.handler.codec.string.StringEncoder;
-import io.netty.handler.logging.LogLevel;
-import io.netty.handler.logging.LoggingHandler;
-import io.netty.util.CharsetUtil;
+import io.netty.channel.socket.nio.NioDatagramChannel;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,59 +18,73 @@ import java.util.concurrent.TimeUnit;
 public class ConnectionMonitor {
 
     private static final Logger LOG = LoggerFactory.getLogger(ConnectionMonitor.class);
+    private final NioEventLoopGroup clientGroup = new NioEventLoopGroup();
+    private final NioEventLoopGroup serverGroup = new NioEventLoopGroup();
     private ConcurrentHashMap<InetSocketAddress, DescriptiveStatistics> monitoredPeers = new ConcurrentHashMap<>();
-    private ChannelInitializer<SocketChannel> channelInitializer = new ChannelInitializer<SocketChannel>() {
-
-        @Override
-        protected void initChannel(SocketChannel channel) {
-            ChannelPipeline pipeline = channel.pipeline();
-            pipeline.addLast("logging", new LoggingHandler(LogLevel.DEBUG));
-
-            pipeline.addLast("frameDecoder", new LineBasedFrameDecoder(80));
-            pipeline.addLast("stringDecoder", new StringDecoder(CharsetUtil.UTF_8));
-            pipeline.addLast("stringEncoder", new StringEncoder(CharsetUtil.UTF_8));
-
-            pipeline.addLast("monitoringHandler", null);
-        }
-    };
+    private ConnectionStore<MonitoringConnection> connectionStore = new ConnectionStore<>();
+    private final Bootstrap clientBootstrap = new Bootstrap();
+    private final Bootstrap serverBootstrap = new Bootstrap();
 
     public ConnectionMonitor(int listenPort, ScheduledExecutorService executorService) {
-        ServerBootstrap serverBootstrap = new ServerBootstrap();
-        Bootstrap clientBootstrap = new Bootstrap();
 
-        NioEventLoopGroup clientGroup = new NioEventLoopGroup();
-        clientBootstrap
-            .group(clientGroup)
-            .channel(NioSocketChannel.class)
-            .option(ChannelOption.SO_KEEPALIVE, true)
-            .option(ChannelOption.TCP_NODELAY, true)
-            .handler(channelInitializer);
-
-        NioEventLoopGroup serverParentGroup = new NioEventLoopGroup();
-        NioEventLoopGroup serverChildGroup = new NioEventLoopGroup();
+        // Start Echo listener
         serverBootstrap
-            .group(serverParentGroup, serverChildGroup)
-            .channel(NioServerSocketChannel.class)
-            .option(ChannelOption.SO_KEEPALIVE, true)
-            .option(ChannelOption.SO_REUSEADDR, true)
-            .childOption(ChannelOption.SO_KEEPALIVE, true)
-            .childOption(ChannelOption.TCP_NODELAY, true)
-            .childHandler(channelInitializer);
+            .group(serverGroup)
+            .channel(NioDatagramChannel.class)
+            .handler(new MonitoringChannelInitializer(pipeline -> {
+                pipeline.addLast(new MonitoringEndpointHandler());
+            }));
 
-        LOG.info("Starting connection monitor...");
-
-        serverBootstrap.bind(listenPort).addListener(channelFuture -> {
+        serverBootstrap.bind(listenPort).addListener((ChannelFuture channelFuture) -> {
             if (channelFuture.isSuccess()) {
-                LOG.info("Connection monitor listening on port {}", listenPort);
+                LOG.info("Listening for PING requests on UDP port {}", listenPort);
+            } else {
+                LOG.error("Could not bind UDP port {}: {}", listenPort, channelFuture.cause());
             }
         });
 
+        // Start connection probing
+        clientBootstrap
+            .group(clientGroup)
+            .channel(NioDatagramChannel.class)
+            .handler(new MonitoringChannelInitializer(pipeline -> {
+                MonitoringConnection connection = new MonitoringConnection(pipeline.channel());
+                pipeline.addLast("monitoringHandler", new MonitoringHandler(connection));
+            }));
+
+        LOG.info("Starting connection monitor...");
+
         executorService.scheduleAtFixedRate(() -> {
+
+            connectionStore.missingConnections().forEach(address -> {
+                clientBootstrap.connect(address).addListener((ChannelFuture connectFuture) -> {
+                    if (connectFuture.isSuccess()) {
+                        Channel channel = connectFuture.channel();
+
+                        MonitoringHandler monitoringHandler = channel.pipeline().get(MonitoringHandler.class);
+                        monitoringHandler.getConnection().setIntendedRemoteAddress(address);
+
+                        LOG.info("Established bridge channel to {}", address);
+
+                        channel.closeFuture().addListener((ChannelFuture closeFuture) -> {
+                            LOG.info("Channel to {} has closed.", address);
+                        });
+                    }
+                });
+            });
 
         }, 1, 5, TimeUnit.SECONDS);
     }
 
+    public void shutdown() {
+        clientGroup.shutdownGracefully();
+    }
+
     public void addMonitoredPeer(InetSocketAddress address) {
-        monitoredPeers.put(address, new DescriptiveStatistics(20));
+        connectionStore.addIntendedConnection(address);
+    }
+
+    public void removeMonitoredPeer(InetSocketAddress address) {
+        connectionStore.removeIntendedConnection(address);
     }
 }

@@ -1,17 +1,25 @@
 package io.moquette.delaygrouping.connections;
 
 import java.net.InetSocketAddress;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
 
 public class ConnectionStore<T extends Connection> {
-    private List<InetSocketAddress> intendedConnections;
+    private Set<InetSocketAddress> intendedConnections;
     private CopyOnWriteArrayList<T> actualConnections;
 
-    public ConnectionStore(List<InetSocketAddress> intendedConnections) {
-        this.intendedConnections = intendedConnections;
+    public ConnectionStore() {
+        this.intendedConnections = ConcurrentHashMap.newKeySet();
         this.actualConnections = new CopyOnWriteArrayList<>();
+    }
+
+    public ConnectionStore(List<InetSocketAddress> intendedConnections) {
+        this();
+        this.intendedConnections.addAll(intendedConnections);
     }
 
     public List<T> getAllDistinct() {
@@ -26,12 +34,20 @@ public class ConnectionStore<T extends Connection> {
             .collect(Collectors.toList());
     }
 
-    public void add(T connection) {
+    public void addActualConnection(T connection) {
         actualConnections.add(connection);
     }
 
+    public void addIntendedConnection(InetSocketAddress address) {
+        intendedConnections.add(address);
+    }
+
+    public void removeIntendedConnection(InetSocketAddress address) {
+        intendedConnections.remove(address);
+    }
+
     public List<InetSocketAddress> missingConnections() {
-        List<InetSocketAddress> missingConnections = this.intendedConnections;
+        List<InetSocketAddress> missingConnections = new ArrayList<>(intendedConnections);
         List<InetSocketAddress> pendingOrConnected = actualConnections.stream()
             .filter(Connection::isClient)
             .map(Connection::getIntendedRemoteAddress)
