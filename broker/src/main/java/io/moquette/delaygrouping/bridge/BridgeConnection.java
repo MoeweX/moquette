@@ -4,6 +4,8 @@ import io.moquette.delaygrouping.bridge.messaging.BridgeMessage;
 import io.moquette.delaygrouping.bridge.messaging.BridgeMessageConnAck;
 import io.moquette.delaygrouping.bridge.messaging.BridgeMessageConnect;
 import io.moquette.delaygrouping.bridge.messaging.BridgeMessagePublish;
+import io.moquette.delaygrouping.connections.Connection;
+import io.moquette.delaygrouping.connections.ConnectionStatus;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.handler.codec.mqtt.MqttPublishMessage;
@@ -11,16 +13,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.InetSocketAddress;
-import java.net.SocketAddress;
 import java.util.Objects;
 
-public class BridgeConnection {
+public class BridgeConnection implements Connection {
 
     private static final Logger LOG = LoggerFactory.getLogger(BridgeConnection.class);
     private final Channel channel;
     private final String bridgeId;
     private String remoteBridgeId = null;
-    private InetSocketAddress configuredRemoteAddr;
+    private InetSocketAddress intendedRemoteAddress;
     private Bridge parent;
     private ConnectionStatus status = ConnectionStatus.NOT_CONNECTED;
 
@@ -48,13 +49,13 @@ public class BridgeConnection {
     void handleMessage(BridgeMessage message) {
         LOG.info("Received message type {}: {}", message.type.name(), message);
         switch (message.type) {
-            case BridgeMessageType.CONNECT:
+            case CONNECT:
                 handleConnect((BridgeMessageConnect) message);
                 break;
-            case BridgeMessageType.CONNACK:
+            case CONNACK:
                 handleConnAck((BridgeMessageConnAck) message);
                 break;
-            case BridgeMessageType.PUBLISH:
+            case PUBLISH:
                 handlePublish((BridgeMessagePublish) message);
                 break;
             default:
@@ -104,24 +105,26 @@ public class BridgeConnection {
         return status == ConnectionStatus.CONNECTED;
     }
 
-    Boolean isClient() {
-        return configuredRemoteAddr != null;
+    public Boolean isClient() {
+        return intendedRemoteAddress != null;
     }
 
-    InetSocketAddress getConfiguredRemoteAddr() {
-        return configuredRemoteAddr;
-    }
-
-    void setConfiguredRemoteAddr(InetSocketAddress configuredRemoteAddr) {
-        this.configuredRemoteAddr = configuredRemoteAddr;
-    }
-
-    String getRemoteBridgeId() {
+    public String getRemoteId() {
         return remoteBridgeId;
     }
 
-    SocketAddress getRemoteAddress() {
-        return channel.remoteAddress();
+    public InetSocketAddress getRemoteAddress() {
+        return (InetSocketAddress) channel.remoteAddress();
+    }
+
+    @Override
+    public InetSocketAddress getIntendedRemoteAddress() {
+        return intendedRemoteAddress;
+    }
+
+    @Override
+    public void setIntendedRemoteAddress(InetSocketAddress address) {
+        this.intendedRemoteAddress = address;
     }
 
     @Override

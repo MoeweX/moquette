@@ -15,19 +15,19 @@ import io.netty.handler.codec.string.StringEncoder;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 import io.netty.util.CharsetUtil;
+import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.InetSocketAddress;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 public class ConnectionMonitor {
+
     private static final Logger LOG = LoggerFactory.getLogger(ConnectionMonitor.class);
-    private Set<InetSocketAddress> monitoredPeers = ConcurrentHashMap.newKeySet();
+    private ConcurrentHashMap<InetSocketAddress, DescriptiveStatistics> monitoredPeers = new ConcurrentHashMap<>();
     private ChannelInitializer<SocketChannel> channelInitializer = new ChannelInitializer<SocketChannel>() {
 
         @Override
@@ -80,6 +80,6 @@ public class ConnectionMonitor {
     }
 
     public void addMonitoredPeer(InetSocketAddress address) {
-        monitoredPeers.add(address);
+        monitoredPeers.put(address, new DescriptiveStatistics(20));
     }
 }

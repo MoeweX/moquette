@@ -47,7 +47,7 @@ public class BridgeConfiguration {
         LOG.info("Configured bridge peers: {}", bridgeConnections);
     }
 
-    List<InetSocketAddress> getBridgePeers() {
+    public List<InetSocketAddress> getBridgePeers() {
         return this.bridgeSocketAddresses;
     }
 

@@ -86,11 +86,9 @@ public class BridgeIntegrationTest {
         testClient2.connect();
         testClient2.publish("test", testMsg);
 
-        MqttMessage rcvMsg = null;
-        while (rcvMsg == null) {
-            rcvMsg = msgCollectors.get(testClient1).waitMessage(2);
-        }
+        MqttMessage rcvMsg = msgCollectors.get(testClient1).waitMessage(4);
 
+        assertThat(rcvMsg).isNotNull();
         assertThat(rcvMsg).isEqualToComparingOnlyGivenFields(testMsg, "messageId", "payload");
     }
 

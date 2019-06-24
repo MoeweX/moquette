@@ -1,4 +1,4 @@
-package io.moquette.delaygrouping.bridge;
+package io.moquette.delaygrouping.connections;
 
 public enum ConnectionStatus {
     NOT_CONNECTED, PENDING, CONNECTED
