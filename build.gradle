@@ -1,6 +1,5 @@
 allprojects  {
   apply plugin: 'maven'
-  apply plugin: 'maven-publish'
 
   group = 'io.moquette'
   version = '0.12-SNAPSHOT'
@@ -13,10 +12,7 @@ buildscript {
     }
   }
   dependencies {
-    classpath 'net.ltgt.gradle:gradle-errorprone-plugin:0.0.13'
-    classpath 'gradle.plugin.com.github.spotbugs:gradlePlugin:1.6.0'
-    classpath 'com.github.jengelman.gradle.plugins:shadow:1.2.3'
-    classpath 'com.jfrog.bintray.gradle:gradle-bintray-plugin:1.7.3'
+    classpath 'com.github.jengelman.gradle.plugins:shadow:5.0.0'
   }
 }
 
@@ -33,7 +29,6 @@ subprojects {
   apply from: new File(rootDir, 'gradle/java.gradle')
   apply from: new File(rootDir, 'gradle/test.gradle')
   apply from: new File(rootDir, 'gradle/lint.gradle')
-  apply plugin: 'com.jfrog.bintray'
   apply plugin: 'eclipse'
 
   ext {
@@ -84,34 +79,5 @@ subprojects {
     }
   }
 
-  // Deploy set environment variables and run ./gradlew bintrayUpload
-  // publication to maven repo
-  publishing {
-    publications {
-      bintrayPublication(MavenPublication) {
-        from components.java
-        groupId "$project.group"
-        artifactId "${project.name}"
-        version '0.12-SNAPSHOT'
-      }
-    }
-  }
 
-  bintray {
-    println "Bintray deploy with user [${System.getenv('BINTRAY_USER')}] while working on ${project.name}"
-    user = System.getenv('BINTRAY_USER')
-    key = System.getenv('BINTRAY_KEY')
-    pkg {
-      repo = 'maven'//"${project.group}"
-      name = "${project.group}.${project.name}"
-      userOrg = 'andsel'
-      licenses = ['Apache-2.0']
-      vcsUrl = "https://api.bintray.com/maven/andsel/maven/${project.group}.${project.name}"
-      publications = ['bintrayPublication']
-    }
-  }
-}
-
-task wrapper(type: Wrapper) {
-  gradleVersion = '4.6'
 }

@@ -10,4 +10,9 @@ public class MonitoringMessage {
         this.message = message;
         this.sender = sender;
     }
+
+    @Override
+    public String toString() {
+        return "MonitoringMessage(message=\"" + message + "\", sender=" + sender + ")";
+    }
 }

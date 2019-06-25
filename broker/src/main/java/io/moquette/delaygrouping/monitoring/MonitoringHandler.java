@@ -1,22 +1,20 @@
 package io.moquette.delaygrouping.monitoring;
 
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.SimpleChannelInboundHandler;
 
-public class MonitoringHandler extends ChannelInboundHandlerAdapter {
+import java.util.function.Consumer;
 
-    private MonitoringConnection connection;
+public class MonitoringHandler extends SimpleChannelInboundHandler<MonitoringMessage> {
 
-    public MonitoringHandler(MonitoringConnection connection) {
-        this.connection = connection;
+    private Consumer<MonitoringMessage> messageConsumer;
+
+    public MonitoringHandler(Consumer<MonitoringMessage> messageConsumer) {
+        this.messageConsumer = messageConsumer;
     }
 
     @Override
-    public void channelRead(ChannelHandlerContext ctx, Object msg) {
-        connection.handleChannelRead((String) msg);
-    }
-
-    public MonitoringConnection getConnection() {
-        return connection;
+    protected void channelRead0(ChannelHandlerContext ctx, MonitoringMessage msg) {
+        messageConsumer.accept(msg);
     }
 }

@@ -81,17 +81,4 @@ JAVA_OPTS="$JAVA_OPTS -XX:MaxGCPauseMillis=500"
 
 ### GC logging options -- uncomment to enable
 
-JAVA_OPTS="$JAVA_OPTS -XX:+PrintGCDetails"
-JAVA_OPTS="$JAVA_OPTS -XX:+PrintGCDateStamps"
-JAVA_OPTS="$JAVA_OPTS -XX:+PrintHeapAtGC"
-JAVA_OPTS="$JAVA_OPTS -XX:+PrintTenuringDistribution"
-JAVA_OPTS="$JAVA_OPTS -XX:+PrintGCApplicationStoppedTime"
-JAVA_OPTS="$JAVA_OPTS -XX:+PrintPromotionFailure"
-#JAVA_OPTS="$JAVA_OPTS -XX:PrintFLSStatistics=1"
-#JAVA_OPTS="$JAVA_OPTS -Xloggc:/var/log/moquette/gc.log"
-JAVA_OPTS="$JAVA_OPTS -Xloggc:$MOQUETTE_HOME/gc.log"
-JAVA_OPTS="$JAVA_OPTS -XX:+UseGCLogFileRotation"
-JAVA_OPTS="$JAVA_OPTS -XX:NumberOfGCLogFiles=10"
-JAVA_OPTS="$JAVA_OPTS -XX:GCLogFileSize=10M"
-
 $JAVA -server $JAVA_OPTS $JAVA_OPTS_SCRIPT -Dlog4j.configuration="file:$LOG_FILE" -Dmoquette.path="$MOQUETTE_PATH" -cp "$MOQUETTE_HOME/lib/*" io.moquette.server.Server

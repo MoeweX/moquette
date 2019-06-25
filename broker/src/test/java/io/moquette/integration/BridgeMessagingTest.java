@@ -1,7 +1,7 @@
 package io.moquette.integration;
 
-import io.moquette.delaygrouping.bridge.Bridge;
-import io.moquette.delaygrouping.bridge.BridgeConfiguration;
+import io.moquette.bridge.Bridge;
+import io.moquette.bridge.BridgeConfiguration;
 import io.moquette.server.Server;
 import io.moquette.server.config.IConfig;
 import io.moquette.server.config.MemoryConfig;
