@@ -41,7 +41,7 @@ public class ConnectionMonitor {
                 @Override
                 protected void initChannel(DatagramChannel channel) throws Exception {
                     ChannelPipeline pipeline = channel.pipeline();
-                    pipeline.addLast("logging", new LoggingHandler(LogLevel.INFO));
+                    pipeline.addLast("logging", new LoggingHandler(LogLevel.DEBUG));
 
                     pipeline.addLast("monitoringCodec", new MonitoringMessageCodec());
                     pipeline.addLast("monitoringHandler", new MonitoringHandler(ConnectionMonitor.this::handleMessage));
@@ -63,7 +63,7 @@ public class ConnectionMonitor {
             monitoredPeers.forEach((address, stats) -> {
                 ping(address);
             });
-        }, 0, 500, TimeUnit.MILLISECONDS);
+        }, 0, 200, TimeUnit.MILLISECONDS);
 
     }
 
@@ -84,7 +84,7 @@ public class ConnectionMonitor {
                 boolean knownId = pendingRequests.remove(id);
                 if (knownId) {
                     // calculate and save delay
-                    long delay = getEpochNano() - sentEpochNano;
+                    double delay = (getEpochNano() - sentEpochNano) / 1_000_000d;
                     monitoredPeers.get(msg.sender).addValue(delay);
                 } else {
                     LOG.warn("Received PONG message from {} with unknown id: {}", msg.sender, id);
