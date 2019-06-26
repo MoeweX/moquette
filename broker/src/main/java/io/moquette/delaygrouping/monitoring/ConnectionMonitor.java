@@ -1,149 +1,96 @@
 package io.moquette.delaygrouping.monitoring;
 
-import io.netty.bootstrap.Bootstrap;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelInitializer;
-import io.netty.channel.ChannelPipeline;
-import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.channel.socket.DatagramChannel;
-import io.netty.channel.socket.nio.NioDatagramChannel;
-import io.netty.handler.logging.LogLevel;
-import io.netty.handler.logging.LoggingHandler;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.InetSocketAddress;
-import java.time.Instant;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.net.SocketException;
+import java.util.ArrayList;
+import java.util.concurrent.*;
 
 public class ConnectionMonitor {
 
     private static final Logger LOG = LoggerFactory.getLogger(ConnectionMonitor.class);
-    private final NioEventLoopGroup eventLoopGroup = new NioEventLoopGroup();
-    private final Bootstrap bootstrap = new Bootstrap();
+    private final LinkedBlockingQueue<InetSocketAddress> pingRequestQueue;
+    private final LinkedBlockingQueue<UDPListener.Measurement> measurementQueue;
+    private final int windowSize;
     private ConcurrentHashMap<InetSocketAddress, DescriptiveStatistics> monitoredPeers = new ConcurrentHashMap<>();
-    private Channel channel;
-    private Set<String> pendingRequests = ConcurrentHashMap.newKeySet();
+    private UDPListener udpListener;
+    private ExecutorService resultExecutor = Executors.newSingleThreadExecutor();
 
-    public ConnectionMonitor(int listenPort, ScheduledExecutorService executorService) {
-
-        bootstrap
-            .group(eventLoopGroup)
-            .channel(NioDatagramChannel.class)
-            .handler(new ChannelInitializer<DatagramChannel>() {
-
-                @Override
-                protected void initChannel(DatagramChannel channel) throws Exception {
-                    ChannelPipeline pipeline = channel.pipeline();
-                    pipeline.addLast("logging", new LoggingHandler(LogLevel.DEBUG));
-
-                    pipeline.addLast("monitoringCodec", new MonitoringMessageCodec());
-                    pipeline.addLast("monitoringHandler", new MonitoringHandler(ConnectionMonitor.this::handleMessage));
-                }
-            });
-
-        bootstrap.bind(listenPort).addListener((ChannelFuture channelFuture) -> {
-            if (channelFuture.isSuccess()) {
-                LOG.info("Listening for PING requests on UDP port {}", listenPort);
-                channel = channelFuture.channel();
-            } else {
-                LOG.error("Could not bind UDP port {}: {}", listenPort, channelFuture.cause());
-            }
-        });
+    public ConnectionMonitor(int listenPort, ScheduledExecutorService executorService, int interval, int windowSize) {
+        this.windowSize = windowSize;
 
         LOG.info("Starting connection monitor...");
 
-        executorService.scheduleAtFixedRate(() -> {
-            monitoredPeers.forEach((address, stats) -> {
-                ping(address);
-            });
-        }, 0, 200, TimeUnit.MILLISECONDS);
+        pingRequestQueue = new LinkedBlockingQueue<>();
+        measurementQueue = new LinkedBlockingQueue<>();
 
-    }
-
-    private void handleMessage(MonitoringMessage msg) {
-        String[] fields = msg.message.split(";");
-        String type = fields[0];
-        Long sentEpochNano = Long.valueOf(fields[1]);
-        String id = fields[2];
-
-        switch (type) {
-
-            case "PING":
-                msg.message = msg.message.replace("PING", "PONG");
-                sendMessage(msg);
-                break;
-
-            case "PONG":
-                boolean knownId = pendingRequests.remove(id);
-                if (knownId) {
-                    // calculate and save delay
-                    double delay = (getEpochNano() - sentEpochNano) / 1_000_000d;
-                    monitoredPeers.get(msg.sender).addValue(delay);
-                } else {
-                    LOG.warn("Received PONG message from {} with unknown id: {}", msg.sender, id);
-                }
-                break;
-
-            default:
-                LOG.warn("Received unexpected message: {}", msg);
+        try {
+            udpListener = new UDPListener(listenPort, pingRequestQueue, measurementQueue);
+            udpListener.start();
+            LOG.info("Connection monitor started (ping interval = {}ms). Listening on port {}", interval, listenPort);
+        } catch (SocketException e) {
+            LOG.error("Error starting listener on port {}: {}", listenPort, e);
         }
 
+        executorService.scheduleAtFixedRate(() -> {
+            // Send ping requests
+            monitoredPeers.forEach((address, stats) -> {
+                pingRequestQueue.add(address);
+            });
+
+            // Trigger result collection
+            collectResults();
+        }, 0, interval, TimeUnit.MILLISECONDS);
+
     }
 
-    private void ping(InetSocketAddress recipient) {
-        long epochNano = getEpochNano();
+    private void collectResults() {
+        resultExecutor.execute(() -> {
+            ArrayList<UDPListener.Measurement> newResults = new ArrayList<>();
+            measurementQueue.drainTo(newResults);
 
-        // Save unique id
-        String id = UUID.randomUUID().toString();
-        pendingRequests.add(id);
-
-        MonitoringMessage msg = new MonitoringMessage("PING;" + epochNano + ";" + id, recipient);
-
-        sendMessage(msg);
-    }
-
-    private long getEpochNano() {
-        Instant now = Instant.now();
-        return (now.getEpochSecond() * 1_000_000_000L) + now.getNano();
-    }
-
-    private void sendMessage(MonitoringMessage msg) {
-        channel.writeAndFlush(msg).addListener(channelFuture -> {
-            if (!channelFuture.isSuccess()) {
-                LOG.error("Writing into channel to {} failed: {}", msg.sender, channelFuture.cause());
-            }
+            newResults.forEach(measurement -> {
+                monitoredPeers.get(measurement.peerAddress).addValue(measurement.delayValue);
+            });
         });
     }
 
     public void shutdown() {
-        eventLoopGroup.shutdownGracefully();
+        udpListener.shutdown();
     }
 
     public void addMonitoredPeer(InetSocketAddress address) {
-        monitoredPeers.put(address, new DescriptiveStatistics(20));
+        monitoredPeers.put(address, new DescriptiveStatistics(windowSize));
+        LOG.info("STARTED monitoring peer at {}", address);
     }
 
     public void removeMonitoredPeer(InetSocketAddress address) {
         monitoredPeers.remove(address);
+        LOG.info("STOPPED monitoring peer at {}", address);
     }
 
-    public Double getAverageDelay(InetSocketAddress address) {
-        DescriptiveStatistics stats = monitoredPeers.get(address);
-        if (stats != null) {
-            return (stats.getMean() / 2) / 1000;
-        } else {
-            return null;
-        }
+    public Future<Double> getAverageDelay(InetSocketAddress address) {
+        return resultExecutor.submit(() -> {
+            DescriptiveStatistics stats = monitoredPeers.get(address);
+            if (stats != null) {
+                return (stats.getMean() / 2) / 1000;
+            } else {
+                return null;
+            }
+        });
     }
 
-    public DescriptiveStatistics getStats(InetSocketAddress address) {
-        return monitoredPeers.get(address);
+    public Future<DescriptiveStatistics> getStats(InetSocketAddress address) {
+        return resultExecutor.submit(() -> {
+            DescriptiveStatistics stats = monitoredPeers.get(address);
+            if (stats != null) {
+                return stats.copy();
+            } else {
+                return null;
+            }
+        });
     }
 }
