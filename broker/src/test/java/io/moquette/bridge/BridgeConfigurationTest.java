@@ -1,4 +1,4 @@
-package io.moquette.delaygrouping;
+package io.moquette.bridge;
 
 import io.moquette.bridge.BridgeConfiguration;
 import io.moquette.server.config.IConfig;
