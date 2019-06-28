@@ -33,8 +33,6 @@ public class PeerConnectionManager {
     private ServerBootstrap serverBootstrap;
     private int bindAndConnectPort = 1884;
 
-    // TODO Maybe we can hide all the Netty specifics here and provide a clean API for upper level code
-
     public PeerConnectionManager(InetAddress bindAddress) {
         initializeClientBootstrap(bindAddress);
         initializeServerBootstrap();
@@ -42,7 +40,6 @@ public class PeerConnectionManager {
         startListener(bindAddress);
     }
 
-    // TODO maybe do the connect in a thread and return a future because this can take a while...
     public PeerConnection getConnectionToPeer(InetAddress peerAddress) {
         return getOrCreateConnection(peerAddress);
     }
@@ -91,7 +88,6 @@ public class PeerConnectionManager {
         serverBootstrap
             .group(serverParentGroup, serverChildGroup)
             .channel(NioServerSocketChannel.class)
-            .option(ChannelOption.SO_KEEPALIVE, true)
             .option(ChannelOption.SO_REUSEADDR, true)
             .option(ChannelOption.SO_BACKLOG, 128)
             .childOption(ChannelOption.SO_KEEPALIVE, true)
@@ -106,10 +102,16 @@ public class PeerConnectionManager {
     }
 
     private PeerConnection getOrCreateConnection(InetAddress peerAddress) {
-        var newConnection = new PeerConnection(bootstrap, new InetSocketAddress(peerAddress, bindAndConnectPort));
-        var existingConnection = connections.putIfAbsent(peerAddress, newConnection);
+        // TODO This looks fishy... we might wanna synchronize write access to the map
+        var existingConnection = connections.get(peerAddress);
         if (existingConnection == null) {
-            return newConnection;
+            var newConnection = new PeerConnection(bootstrap, new InetSocketAddress(peerAddress, bindAndConnectPort));
+            existingConnection = connections.putIfAbsent(peerAddress, newConnection);
+            if (existingConnection == null) {
+                return newConnection;
+            } else {
+                return existingConnection;
+            }
         } else {
             return existingConnection;
         }
