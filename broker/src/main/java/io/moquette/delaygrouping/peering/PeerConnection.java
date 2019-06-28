@@ -14,7 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.*;
 import java.util.function.Consumer;
 
 public class PeerConnection {
@@ -25,6 +25,9 @@ public class PeerConnection {
     private List<Channel> channels = new ArrayList<>();
     private Bootstrap bootstrap;
     private InetSocketAddress remoteAddress;
+    private LinkedBlockingDeque<PeerMessage> sendQueue = new LinkedBlockingDeque<>();
+    private ExecutorService executor = Executors.newCachedThreadPool();
+    private boolean running = false;
 
     // TODO Auto reconnect?
 
@@ -35,6 +38,22 @@ public class PeerConnection {
         for (PeerMessageType type : PeerMessageType.values()) {
             handlersByType.put(type, new ArrayList<>());
         }
+
+        // Start message sending thread
+        executor.execute(() -> {
+            running = true;
+            while (running) {
+                PeerMessage msg = null;
+                try {
+                    msg = sendQueue.take();
+                    connect().get();
+                    writeAndFlush(msg).get();
+                } catch (ExecutionException e) {
+                    // The sending process hasn't worked, so put the message back into the queue
+                    sendQueue.addFirst(msg);
+                } catch (InterruptedException ignored) {}
+            }
+        });
     }
 
     PeerConnection(Bootstrap bootstrap, InetSocketAddress remoteAddress) {
@@ -42,14 +61,40 @@ public class PeerConnection {
         this.remoteAddress = remoteAddress;
     }
 
-    void connect() {
+    private Future connect() {
+        var future = new CompletableFuture<>();
         if (channels.isEmpty()) {
             bootstrap.connect(remoteAddress).addListener((ChannelFuture channelFuture) -> {
-                channels.add(channelFuture.channel());
-                var peeringHandler = channelFuture.channel().pipeline().get(PeeringHandler.class);
-                peeringHandler.setConnection(this);
+                if (channelFuture.isSuccess()) {
+                    channels.add(channelFuture.channel());
+                    var peeringHandler = channelFuture.channel().pipeline().get(PeeringHandler.class);
+                    peeringHandler.setConnection(this);
+                    future.complete(null);
+                } else {
+                    LOG.error("Could not establish connection to {}: {}", remoteAddress, channelFuture.cause());
+                    future.completeExceptionally(channelFuture.cause());
+                }
             });
+        } else {
+            future.complete(null);
         }
+        return future;
+    }
+
+    private Future writeAndFlush(PeerMessage msg) {
+        var future = new CompletableFuture<>();
+
+        // Always use the first channel, as it should always be there and shouldn't make a difference anyway
+        channels.get(0).writeAndFlush(msg).addListener((ChannelFuture channelFuture) -> {
+            if (channelFuture.isSuccess()) {
+                future.complete(null);
+            } else {
+                LOG.error("Failed writing into channel to {}", channelFuture.channel().remoteAddress().toString(), channelFuture.cause());
+                future.completeExceptionally(channelFuture.cause());
+            }
+        });
+
+        return future;
     }
 
     void addChannel(Channel channel) {
@@ -62,14 +107,8 @@ public class PeerConnection {
     }
 
     public void sendMessage(PeerMessage msg) {
-        // TODO Should we autoconnect here? Or maybe just add the message to an internal queue
         msg.retain();
-        // Always use the first channel, as it should always be there and shouldn't make a difference anyway
-        channels.get(0).writeAndFlush(msg).addListener((ChannelFuture channelFuture) -> {
-            if (!channelFuture.isSuccess() && !channelFuture.isCancelled()) {
-                LOG.error("Failed writing into channel to {}", channelFuture.channel().remoteAddress().toString(), channelFuture.cause());
-            }
-        });
+        sendQueue.add(msg);
     }
 
     public String registerMessageHandler(Consumer<PeerMessage> handler, PeerMessageType... messageTypes) {
@@ -94,16 +133,21 @@ public class PeerConnection {
     }
 
     void close() {
+        running = false;
         channels.forEach(ChannelOutboundInvoker::close);
     }
 
     void handleChannelInactive(Channel channel) {
         channels.remove(channel);
-        channel.close();
+        if (channel != null) {
+            channel.close();
+        }
     }
 
     void handleChannelException(Channel channel) {
         channels.remove(channel);
-        channel.close();
+        if (channel != null) {
+            channel.close();
+        }
     }
 }

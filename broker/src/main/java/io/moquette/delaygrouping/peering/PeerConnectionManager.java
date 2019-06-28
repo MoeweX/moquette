@@ -44,10 +44,7 @@ public class PeerConnectionManager {
 
     // TODO maybe do the connect in a thread and return a future because this can take a while...
     public PeerConnection getConnectionToPeer(InetAddress peerAddress) {
-        var peerConnection = getOrCreateConnection(peerAddress);
-        // This is okay, because connect does nothing if already connected
-        peerConnection.connect();
-        return peerConnection;
+        return getOrCreateConnection(peerAddress);
     }
 
     public void closeConnectionToPeer(InetAddress peerAddress) {
