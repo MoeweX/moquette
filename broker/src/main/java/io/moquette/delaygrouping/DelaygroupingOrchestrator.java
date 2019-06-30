@@ -1,10 +1,19 @@
 package io.moquette.delaygrouping;
 
-public class Orchestrator {
+import io.moquette.delaygrouping.mqtt.MqttConnection;
 
-    public Orchestrator() {
-        // We need some config: anchorNode, latencyThreshold
-        // This also needs some state, determining which mode we're in (LEADER, NON_LEADER, etc.?)
+import java.net.InetSocketAddress;
+
+public class DelaygroupingOrchestrator {
+
+    private InetSocketAddress cloudAnchor;
+    private int latencyThreshold;
+
+    public DelaygroupingOrchestrator(DelaygroupingConfiguration config) {
+        cloudAnchor = config.getAnchorNodeAddress();
+        latencyThreshold = config.getLatencyThreshold();
+
+        transitionToLeader();
 
         // Enter LEADER mode
         // Connect to anchor node
@@ -25,6 +34,17 @@ public class Orchestrator {
 
     }
 
+    private void doBootstrap() {
+
+    }
+
+    private void transitionToLeader() {
+        // What should happen if connection to anchor node is not possible?
+        //var anchorConnection = new MqttConnection();
+
+        doLeader();
+    }
+
     private void doLeader() {
         // Publish IP on /$SYS/COLLIN/leaders topic
         // Check other leaders for nodes below the threshold
@@ -34,6 +54,10 @@ public class Orchestrator {
         // Forward matching PUBs from cloud anchor to group members
 
         // Forward all PUBs from group members to cloud
+    }
+
+    private void transitionToNonLeader() {
+        // send subscriptions to new leader
     }
 
     private void doNonLeader() {

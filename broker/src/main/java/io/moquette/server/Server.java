@@ -21,6 +21,7 @@ import io.moquette.bridge.Bridge;
 import io.moquette.bridge.BridgeConfiguration;
 import io.moquette.bridge.BridgeInterceptHandler;
 import io.moquette.connections.IConnectionsManager;
+import io.moquette.delaygrouping.DelaygroupingConfiguration;
 import io.moquette.interception.InterceptHandler;
 import io.moquette.server.config.*;
 import io.moquette.server.netty.NettyAcceptor;
@@ -179,14 +180,19 @@ public class Server {
         LOG.info("Moquette server has been started successfully in {} ms", startTime);
         m_initialized = true;
 
-        // Set up bridge
-        final BridgeConfiguration bridgeConfig = new BridgeConfiguration(config);
+        // Set up bridge (if configured)
+        final var bridgeConfig = new BridgeConfiguration(config);
         if (bridgeConfig.getHost() != null && bridgeConfig.getPort() != 0) {
             bridge = new Bridge(bridgeConfig, this, scheduler);
-            final BridgeInterceptHandler bridgeInterceptHandler = new BridgeInterceptHandler(bridge);
+            final var bridgeInterceptHandler = new BridgeInterceptHandler(bridge);
             addInterceptHandler(bridgeInterceptHandler);
         }
 
+        // Set up delaygrouping role (if configured)
+        final var dgConfig = new DelaygroupingConfiguration(config);
+        if (dgConfig.isEnabled()) {
+
+        }
     }
 
 

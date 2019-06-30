@@ -2,5 +2,7 @@ package io.moquette.delaygrouping.peering.messaging;
 
 public enum PeerMessageType {
     PUBLISH,
-    REDIRECT
+    REDIRECT,
+    MEMBERSHIP,
+    ELECTION
 }

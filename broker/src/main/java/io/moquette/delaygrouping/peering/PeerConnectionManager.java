@@ -117,7 +117,7 @@ public class PeerConnectionManager {
         }
     }
 
-    static ChannelInitializer<SocketChannel> createChannelInitializer(Consumer<SocketChannel> peeringHandlerAdder) {
+    private static ChannelInitializer<SocketChannel> createChannelInitializer(Consumer<SocketChannel> peeringHandlerAdder) {
         return new ChannelInitializer<>() {
 
             @Override
