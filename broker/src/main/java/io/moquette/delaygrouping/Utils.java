@@ -6,6 +6,7 @@ import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.util.Collections;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 public class Utils {
     public static Optional<InetAddress> getInterfaceIpv4Address(String interfaceName) {
@@ -23,4 +24,20 @@ public class Utils {
 
         return Optional.empty();
     }
+
+    public static boolean mqttTopicMatchesSubscription(String topic, String subscription) {
+        // Escape /
+        String subscriptionRegex = subscription.replaceAll("/", "\\\\/");
+
+        // Replace +
+        subscriptionRegex = subscriptionRegex.replaceAll("\\+", "[^\\/]*");
+
+        // Replace #
+        subscriptionRegex = subscriptionRegex.replaceAll("\\\\/#$", "(\\/.*|\\$)");
+        subscriptionRegex = subscriptionRegex.replaceAll("^#$", ".*");
+
+        var pattern = Pattern.compile(subscriptionRegex);
+        return pattern.matcher(topic).matches();
+    }
+
 }

@@ -1,4 +1,4 @@
-package io.moquette.delaygrouping.mqtt;
+package io.moquette.delaygrouping.anchor;
 
 public class Message {
     public String topic;

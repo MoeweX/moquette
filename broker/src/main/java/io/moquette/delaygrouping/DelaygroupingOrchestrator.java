@@ -1,13 +1,18 @@
 package io.moquette.delaygrouping;
 
-import io.moquette.delaygrouping.mqtt.MqttConnection;
+import io.moquette.delaygrouping.anchor.AnchorConnection;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.InetSocketAddress;
 
 public class DelaygroupingOrchestrator {
+    private static final Logger LOG = LoggerFactory.getLogger(DelaygroupingOrchestrator.class);
 
     private InetSocketAddress cloudAnchor;
     private int latencyThreshold;
+    private AnchorConnection anchorConnection;
+    private String clientId;
 
     public DelaygroupingOrchestrator(DelaygroupingConfiguration config) {
         cloudAnchor = config.getAnchorNodeAddress();
@@ -29,8 +34,7 @@ public class DelaygroupingOrchestrator {
         // Do leader election between the two
         // Either doLeader or doNonLeader as a result
 
-        // TODO What if another node joins while two are already negotiating? Put on hold for now? Redirect to new leader?
-        // TODO How about all nodes can redirect to their leader?
+        // TODO What if another node joins while two are already negotiating? --> Wait and then redirect to new leader if necessary
 
     }
 
@@ -39,8 +43,7 @@ public class DelaygroupingOrchestrator {
     }
 
     private void transitionToLeader() {
-        // What should happen if connection to anchor node is not possible?
-        //var anchorConnection = new MqttConnection();
+        //anchorConnection = new AnchorConnection(cloudAnchor);
 
         doLeader();
     }

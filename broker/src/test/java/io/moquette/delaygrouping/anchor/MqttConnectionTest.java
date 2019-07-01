@@ -1,4 +1,4 @@
-package io.moquette.delaygrouping.mqtt;
+package io.moquette.delaygrouping.anchor;
 
 import org.eclipse.paho.client.mqttv3.MqttException;
 import org.junit.Test;
@@ -22,17 +22,13 @@ public class MqttConnectionTest {
         MqttConnection conn1 = new MqttConnection("tcp://localhost:1883", "conn1");
         MqttConnection conn2 = new MqttConnection("tcp://localhost:1883", "conn2");
 
-        conn1.setMessageHandler(msg -> {
-            System.out.println("conn1 - " + msg.topic + ":" + new String(msg.payload));
-            receivedMessages1.add(msg);
-        });
-        conn2.setMessageHandler(msg -> {
-            System.out.println("conn2 - " + msg.topic + ":" + new String(msg.payload));
-            receivedMessages2.add(msg);
-        });
+        conn1.addMessageHandler("test", receivedMessages1::add);
+        conn2.addMessageHandler("test2", receivedMessages2::add);
 
         conn1.addSubscription("test");
         conn2.addSubscription("test2");
+
+        Thread.sleep(2000);
 
         conn1.publish(msg1);
         conn2.publish(msg2);
