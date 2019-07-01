@@ -22,6 +22,8 @@ import io.moquette.bridge.BridgeConfiguration;
 import io.moquette.bridge.BridgeInterceptHandler;
 import io.moquette.connections.IConnectionsManager;
 import io.moquette.delaygrouping.DelaygroupingConfiguration;
+import io.moquette.delaygrouping.DelaygroupingInterceptHandler;
+import io.moquette.delaygrouping.DelaygroupingOrchestrator;
 import io.moquette.interception.InterceptHandler;
 import io.moquette.server.config.*;
 import io.moquette.server.netty.NettyAcceptor;
@@ -65,6 +67,8 @@ public class Server {
     private ScheduledExecutorService scheduler;
 
     private Bridge bridge;
+
+    private DelaygroupingOrchestrator delaygroupingOrchestrator;
 
     public static void main(String[] args) throws IOException {
         final Server server = new Server();
@@ -191,7 +195,8 @@ public class Server {
         // Set up delaygrouping role (if configured)
         final var dgConfig = new DelaygroupingConfiguration(config);
         if (dgConfig.isEnabled()) {
-
+            delaygroupingOrchestrator = new DelaygroupingOrchestrator(dgConfig, this::internalPublish);
+            addInterceptHandler(new DelaygroupingInterceptHandler(delaygroupingOrchestrator.getInterceptHandler(), delaygroupingOrchestrator.getSubscibeHandler()));
         }
     }
 

@@ -4,20 +4,33 @@ import io.moquette.server.config.IConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.UnknownHostException;
 
 public class DelaygroupingConfiguration {
 
     private static final Logger LOG = LoggerFactory.getLogger(DelaygroupingConfiguration.class);
 
-    private final String host;
-    private final int port;
-    private final InetSocketAddress anchorNodeAddress;
-    private final int latencyThreshold;
+    private InetAddress host;
+    private int port;
+    private InetSocketAddress anchorNodeAddress;
+    private int latencyThreshold;
+    private boolean valid;
 
     public DelaygroupingConfiguration(IConfig config) {
-        host = config.getProperty("delaygrouping_host", "127.0.0.1");
-        port = config.intProp("delaygrouping_port", 1884);
+        valid = true;
+
+        var hostString = config.getProperty("delaygrouping_peering_host", "127.0.0.1");
+        try {
+            host = InetAddress.getByName(hostString);
+        } catch (UnknownHostException e) {
+            LOG.error("Invalid local peering interface address! Skipping activation. Exception: {}", e);
+            valid = false;
+        }
+
+        port = config.intProp("delaygrouping_peering_port", 1884);
+
         latencyThreshold = config.intProp("delaygrouping_threshold", 5);
 
         var anchorNodeAddressValue = config.getProperty("delaygrouping_anchor_node_address");
@@ -25,11 +38,11 @@ public class DelaygroupingConfiguration {
             String[] fields = anchorNodeAddressValue.split(":");
             anchorNodeAddress = new InetSocketAddress(fields[0], Integer.valueOf(fields[1]));
         } else {
-            anchorNodeAddress = null;
+            valid = false;
         }
     }
 
-    public String getHost() {
+    public InetAddress getHost() {
         return host;
     }
 
@@ -42,7 +55,7 @@ public class DelaygroupingConfiguration {
     }
 
     public boolean isEnabled() {
-        return anchorNodeAddress != null;
+        return valid;
     }
 
     public int getLatencyThreshold() {

@@ -32,6 +32,10 @@ public class InterceptPublishMessage extends InterceptAbstractMessage {
         this.username = username;
     }
 
+    public MqttPublishMessage getMsg() {
+        return msg;
+    }
+
     public String getTopicName() {
         return msg.variableHeader().topicName();
     }
@@ -47,4 +51,5 @@ public class InterceptPublishMessage extends InterceptAbstractMessage {
     public String getUsername() {
         return username;
     }
+
 }
