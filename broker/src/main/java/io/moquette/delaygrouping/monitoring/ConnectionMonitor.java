@@ -29,6 +29,11 @@ public class ConnectionMonitor {
     private Map<InetAddress, Process> runningInstances = new ConcurrentHashMap<>();
     private ProcessBuilder processBuilder = new ProcessBuilder();
 
+    /**
+     * Set up connection monitor.
+     * @param interval Monitoring interval in ms.
+     * @param windowSize Window size for averaging.
+     */
     public ConnectionMonitor(int interval, int windowSize) {
         this.interval = interval;
         this.windowSize = windowSize;
@@ -102,6 +107,13 @@ public class ConnectionMonitor {
         }
 
         LOG.info("STOPPED monitoring peer at {}", address);
+    }
+
+    public void removeAll() {
+        monitoredPeers.clear();
+        runningInstances.forEach((address, process) -> process.destroy());
+
+        LOG.info("STOPPED monitoring ALL peers");
     }
 
     private Process createProcess(InetAddress address) {

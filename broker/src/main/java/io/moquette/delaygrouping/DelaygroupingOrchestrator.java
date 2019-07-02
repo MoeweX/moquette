@@ -1,15 +1,26 @@
 package io.moquette.delaygrouping;
 
 import io.moquette.delaygrouping.anchor.AnchorConnection;
-import io.netty.handler.codec.mqtt.MqttMessage;
+import io.moquette.delaygrouping.monitoring.ConnectionMonitor;
+import io.moquette.delaygrouping.peering.PeerConnection;
+import io.moquette.delaygrouping.peering.PeerConnectionManager;
+import io.moquette.delaygrouping.peering.messaging.PeerMessage;
+import io.moquette.delaygrouping.peering.messaging.PeerMessageMembership;
+import io.moquette.delaygrouping.peering.messaging.PeerMessageMembership.MembershipSignal;
+import io.moquette.delaygrouping.peering.messaging.PeerMessageType;
 import io.netty.handler.codec.mqtt.MqttPublishMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.util.HashSet;
+import java.util.Random;
+import java.util.Set;
+import java.util.concurrent.ExecutionException;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 public class DelaygroupingOrchestrator {
     private static final Logger LOG = LoggerFactory.getLogger(DelaygroupingOrchestrator.class);
@@ -21,12 +32,22 @@ public class DelaygroupingOrchestrator {
     private String clientId;
     private BiConsumer<MqttPublishMessage, String> internalPublishFunction;
     private OrchestratorState state;
+    private ConnectionMonitor connectionMonitor;
+    private Set<InetAddress> previousLeaders;
+    private InetAddress leader;
+    private boolean redirectPeers;
+    private PeerConnectionManager peerConnectionManager;
+    private int leaderCapabilityMeasure = new Random().nextInt();
 
     public DelaygroupingOrchestrator(DelaygroupingConfiguration config, BiConsumer<MqttPublishMessage, String> internalPublishFunction) {
         this.internalPublishFunction = internalPublishFunction;
         cloudAnchor = config.getAnchorNodeAddress();
         latencyThreshold = config.getLatencyThreshold();
         this.localInterfaceAddress = config.getHost();
+        this.connectionMonitor = new ConnectionMonitor(1, 20);
+        peerConnectionManager = new PeerConnectionManager(localInterfaceAddress, this::handleNewPeerConnection);
+        leader = null;
+        redirectPeers = false;
 
         state = OrchestratorState.BOOTSTRAP;
 
@@ -34,7 +55,7 @@ public class DelaygroupingOrchestrator {
         while (true) {
             switch (state) {
                 case BOOTSTRAP:
-                    transitionToLeader();
+                    doBootstrap();
                     break;
                 case LEADER:
                     doLeader();
@@ -65,17 +86,49 @@ public class DelaygroupingOrchestrator {
 
     private void doBootstrap() {
 
+
+        transitionToLeader();
     }
 
     private void transitionToLeader() {
         anchorConnection = new AnchorConnection(cloudAnchor, localInterfaceAddress);
         anchorConnection.startLeaderAnnouncement();
 
+        leader = null;
+        redirectPeers = false;
+
+        previousLeaders = new HashSet<>();
+
         state = OrchestratorState.LEADER;
     }
 
     private void doLeader() {
-        // Check other leaders for nodes below the threshold
+        // Check other leaders and update connection monitoring
+        var currentLeaders = anchorConnection.getCollectedLeaders();
+        previousLeaders.removeAll(currentLeaders);
+        currentLeaders.forEach(leader -> connectionMonitor.addMonitoredPeer(leader));
+        previousLeaders.forEach(leader -> connectionMonitor.removeMonitoredPeer(leader));
+        previousLeaders = currentLeaders;
+
+        // Check if there are leaders below the set threshold
+        var minimumDelay = Double.MAX_VALUE;
+        InetAddress minimumDelayLeader = null;
+        for (InetAddress leader : currentLeaders) {
+            try {
+                var averageDelay = connectionMonitor.getAverageDelay(leader).get();
+                if (averageDelay < latencyThreshold && averageDelay < minimumDelay) {
+                    minimumDelay = averageDelay;
+                    minimumDelayLeader = leader;
+                }
+            } catch (InterruptedException | ExecutionException ignored) {}
+        }
+
+        if (minimumDelayLeader != null) {
+            // if we have a candidate start negotiation (see handlers)
+            var newLeaderConnection = peerConnectionManager.getConnectionToPeer(minimumDelayLeader);
+            newLeaderConnection.registerMessageHandler(this::handleMembershipMessages, PeerMessageType.MEMBERSHIP);
+            newLeaderConnection.sendMessage(PeerMessageMembership.join());
+        }
 
         // Collect subscriptions and forward them to cloud anchor
 
@@ -85,7 +138,10 @@ public class DelaygroupingOrchestrator {
     }
 
     private void transitionToNonLeader() {
-        // shutdown anchor connection (do we need to keep something in mind?)
+        // stop all leader-related functions
+        connectionMonitor.removeAll();
+        anchorConnection.shutdown();
+        anchorConnection = null;
         // redirect all clients to new leader
         // enable automatic redirection of connecting peers to leader
         // send subscriptions to new leader
@@ -99,6 +155,30 @@ public class DelaygroupingOrchestrator {
         // forward all other publish messages (i.e. no group internal subscribers) to leader
         // forward subscribe messages to all group members
         // TODO monitor latency to group leader and break connection if threshold exceeded (is that a good idea?)
+    }
+
+    private void handleMembershipMessages(PeerMessage msg, PeerConnection origin) {
+        PeerMessageMembership message = (PeerMessageMembership) msg;
+        switch (message.getSignal()) {
+            case JOIN:
+                break;
+            case JOIN_ACK:
+                origin.sendMessage(PeerMessageMembership.electionRequest(leaderCapabilityMeasure));
+                break;
+            case ELECTION_REQUEST:
+                if (leaderCapabilityMeasure >= message.getElectionValue()) {
+                    origin.sendMessage(PeerMessageMembership.electionResponse(false));
+                } else {
+                    origin.sendMessage(PeerMessageMembership.electionResponse(true));
+                }
+                break;
+            case ELECTION_RESPONSE:
+                break;
+        }
+    }
+
+    private void handleNewPeerConnection(PeerConnection connection) {
+        connection.registerMessageHandler(this::handleMembershipMessages, PeerMessageType.MEMBERSHIP);
     }
 
     private void handleInterceptedPublish(MqttPublishMessage interceptedMsg) {

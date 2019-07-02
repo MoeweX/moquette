@@ -15,13 +15,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.*;
-import java.util.function.Consumer;
+import java.util.function.BiConsumer;
 
 public class PeerConnection {
     private static final Logger LOG = LoggerFactory.getLogger(PeerConnection.class);
 
-    private Map<String, Consumer<PeerMessage>> handlers = new ConcurrentHashMap<>();
-    private Map<PeerMessageType, List<Consumer<PeerMessage>>> handlersByType = new ConcurrentHashMap<>();
+    private Map<String, BiConsumer<PeerMessage, PeerConnection>> handlers = new ConcurrentHashMap<>();
+    private Map<PeerMessageType, List<BiConsumer<PeerMessage, PeerConnection>>> handlersByType = new ConcurrentHashMap<>();
     private List<Channel> channels = new ArrayList<>();
     private Bootstrap bootstrap;
     private InetSocketAddress remoteAddress;
@@ -51,7 +51,8 @@ public class PeerConnection {
                 } catch (ExecutionException e) {
                     // The sending process hasn't worked, so put the message back into the queue
                     sendQueue.addFirst(msg);
-                } catch (InterruptedException ignored) {}
+                } catch (InterruptedException ignored) {
+                }
             }
         });
     }
@@ -101,9 +102,13 @@ public class PeerConnection {
         channels.add(channel);
     }
 
+    int getChannelCount() {
+        return channels.size();
+    }
+
     void handleMessage(PeerMessage msg) {
         handlersByType.get(msg.type)
-            .forEach(consumer -> consumer.accept(msg));
+            .forEach(consumer -> consumer.accept(msg, this));
     }
 
     public void sendMessage(PeerMessage msg) {
@@ -111,7 +116,7 @@ public class PeerConnection {
         sendQueue.add(msg);
     }
 
-    public String registerMessageHandler(Consumer<PeerMessage> handler, PeerMessageType... messageTypes) {
+    public String registerMessageHandler(BiConsumer<PeerMessage, PeerConnection> handler, PeerMessageType... messageTypes) {
         // listen for a specific message type (in order to isolate or react to a certain type of communication)
         // there can be multiple overlapping handlers
         // What about threading? Call each on a separate thread?
@@ -124,7 +129,7 @@ public class PeerConnection {
     }
 
     public void removeMessageHandler(String handlerId) {
-        Consumer<PeerMessage> handler = handlers.remove(handlerId);
+        var handler = handlers.remove(handlerId);
         if (handler != null) {
             for (PeerMessageType type : PeerMessageType.values()) {
                 handlersByType.get(type).remove(handler);

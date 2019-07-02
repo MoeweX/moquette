@@ -21,6 +21,8 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 
 public class PeerConnectionManager {
@@ -32,8 +34,11 @@ public class PeerConnectionManager {
     private Bootstrap bootstrap;
     private ServerBootstrap serverBootstrap;
     private int bindAndConnectPort = 1884;
+    private Consumer<PeerConnection> newConnectionhandler;
+    private ExecutorService notificationExecutor = Executors.newCachedThreadPool();
 
-    public PeerConnectionManager(InetAddress bindAddress) {
+    public PeerConnectionManager(InetAddress bindAddress, Consumer<PeerConnection> newConnectionHandler) {
+        this.newConnectionhandler = newConnectionHandler;
         initializeClientBootstrap(bindAddress);
         initializeServerBootstrap();
 
@@ -94,11 +99,16 @@ public class PeerConnectionManager {
             .childOption(ChannelOption.TCP_NODELAY, true)
             .childHandler(createChannelInitializer(channel -> {
                 var peerConnection = getOrCreateConnection(channel.remoteAddress().getAddress());
+                if (peerConnection.getChannelCount() == 0) notifyNewConnection(peerConnection);
                 peerConnection.addChannel(channel);
                 var peeringHandler = new PeeringHandler();
                 peeringHandler.setConnection(peerConnection);
                 channel.pipeline().addLast("peeringHandler", peeringHandler);
             }));
+    }
+
+    private void notifyNewConnection(PeerConnection connection) {
+        notificationExecutor.execute(() -> newConnectionhandler.accept(connection));
     }
 
     private PeerConnection getOrCreateConnection(InetAddress peerAddress) {

@@ -62,6 +62,11 @@ public class AnchorConnection {
         leaderCache.clear();
     }
 
+    public void shutdown() {
+        stopLeaderAnnouncement();
+        mqttConnection.disconnect();
+    }
+
     public Set<InetAddress> getCollectedLeaders() {
         return leaderCache.getAll();
     }
