@@ -10,6 +10,22 @@ public class PeerMessageMembership extends PeerMessage {
         this.signal = signal;
     }
 
+    public static PeerMessageMembership join(int electionValue) {
+        var msg = new PeerMessageMembership(MembershipSignal.JOIN);
+        msg.electionValue = electionValue;
+        return msg;
+    }
+
+    public static PeerMessageMembership joinAck(boolean shouldBeLeader) {
+        var msg = new PeerMessageMembership(MembershipSignal.JOIN_ACK);
+        msg.shouldBeLeader = shouldBeLeader;
+        return msg;
+    }
+
+    public static PeerMessageMembership deny() {
+        return new PeerMessageMembership(MembershipSignal.DENY);
+    }
+
     public MembershipSignal getSignal() {
         return signal;
     }
@@ -18,30 +34,13 @@ public class PeerMessageMembership extends PeerMessage {
         return electionValue;
     }
 
-    public static PeerMessageMembership join() {
-        return new PeerMessageMembership(MembershipSignal.JOIN);
-    }
-
-    public static PeerMessageMembership joinAck() {
-        return new PeerMessageMembership(MembershipSignal.JOIN_ACK);
-    }
-
-    public static PeerMessageMembership electionRequest(int electionValue) {
-        var msg = new PeerMessageMembership(MembershipSignal.ELECTION_REQUEST);
-        msg.electionValue = electionValue;
-        return msg;
-    }
-
-    public static PeerMessageMembership electionResponse(boolean shouldBeLeader) {
-        var msg = new PeerMessageMembership(MembershipSignal.ELECTION_RESPONSE);
-        msg.shouldBeLeader = shouldBeLeader;
-        return msg;
+    public boolean isShouldBeLeader() {
+        return shouldBeLeader;
     }
 
     public enum MembershipSignal {
         JOIN,
         JOIN_ACK,
-        ELECTION_REQUEST,
-        ELECTION_RESPONSE,
+        DENY,
     }
 }

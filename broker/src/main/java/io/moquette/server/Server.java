@@ -196,7 +196,7 @@ public class Server {
         final var dgConfig = new DelaygroupingConfiguration(config);
         if (dgConfig.isEnabled()) {
             delaygroupingOrchestrator = new DelaygroupingOrchestrator(dgConfig, this::internalPublish);
-            addInterceptHandler(new DelaygroupingInterceptHandler(delaygroupingOrchestrator.getInterceptHandler(), delaygroupingOrchestrator.getSubscibeHandler()));
+            addInterceptHandler(new DelaygroupingInterceptHandler(delaygroupingOrchestrator.getInterceptHandler(), delaygroupingOrchestrator.getSubscribeHandler()));
         }
     }
 

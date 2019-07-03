@@ -1,6 +1,7 @@
 package io.moquette.delaygrouping.anchor;
 
 import io.moquette.delaygrouping.peering.messaging.PeerMessagePublish;
+import io.netty.handler.codec.mqtt.MqttPublishMessage;
 import org.eclipse.paho.client.mqttv3.MqttException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -76,12 +77,14 @@ public class AnchorConnection {
     }
 
     public void publish(PeerMessagePublish publishMsg) {
-        publishMsg.getPublishMessages().forEach(msg -> {
-            var topic = msg.variableHeader().topicName();
-            var payload = new byte[msg.payload().readableBytes()];
-            msg.payload().readBytes(payload);
-            mqttConnection.publish(new Message(topic, payload));
-        });
+        publishMsg.getPublishMessages().forEach(this::publish);
+    }
+
+    public void publish(MqttPublishMessage msg) {
+        var topic = msg.variableHeader().topicName();
+        var payload = new byte[msg.payload().readableBytes()];
+        msg.payload().readBytes(payload);
+        mqttConnection.publish(new Message(topic, payload));
     }
 
     private void handleLeaderReceive(Message msg) {

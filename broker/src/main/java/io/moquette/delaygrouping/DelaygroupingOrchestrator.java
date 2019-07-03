@@ -4,10 +4,7 @@ import io.moquette.delaygrouping.anchor.AnchorConnection;
 import io.moquette.delaygrouping.monitoring.ConnectionMonitor;
 import io.moquette.delaygrouping.peering.PeerConnection;
 import io.moquette.delaygrouping.peering.PeerConnectionManager;
-import io.moquette.delaygrouping.peering.messaging.PeerMessage;
-import io.moquette.delaygrouping.peering.messaging.PeerMessageMembership;
-import io.moquette.delaygrouping.peering.messaging.PeerMessageMembership.MembershipSignal;
-import io.moquette.delaygrouping.peering.messaging.PeerMessageType;
+import io.moquette.delaygrouping.peering.messaging.*;
 import io.netty.handler.codec.mqtt.MqttPublishMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,10 +14,10 @@ import java.net.InetSocketAddress;
 import java.util.HashSet;
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 
 public class DelaygroupingOrchestrator {
     private static final Logger LOG = LoggerFactory.getLogger(DelaygroupingOrchestrator.class);
@@ -35,9 +32,11 @@ public class DelaygroupingOrchestrator {
     private ConnectionMonitor connectionMonitor;
     private Set<InetAddress> previousLeaders;
     private InetAddress leader;
-    private boolean redirectPeers;
     private PeerConnectionManager peerConnectionManager;
-    private int leaderCapabilityMeasure = new Random().nextInt();
+    private int leaderCapabilityMeasure = new Random().nextInt(); // TODO Add this to config?
+    private Set<InetAddress> groupMembers = ConcurrentHashMap.newKeySet();
+    private SubscriptionStore peerSubscriptions = new SubscriptionStore();
+    private SubscriptionStore clientSubscriptions = new SubscriptionStore();
 
     public DelaygroupingOrchestrator(DelaygroupingConfiguration config, BiConsumer<MqttPublishMessage, String> internalPublishFunction) {
         this.internalPublishFunction = internalPublishFunction;
@@ -47,7 +46,6 @@ public class DelaygroupingOrchestrator {
         this.connectionMonitor = new ConnectionMonitor(1, 20);
         peerConnectionManager = new PeerConnectionManager(localInterfaceAddress, this::handleNewPeerConnection);
         leader = null;
-        redirectPeers = false;
 
         state = OrchestratorState.BOOTSTRAP;
 
@@ -64,38 +62,29 @@ public class DelaygroupingOrchestrator {
                     doNonLeader();
                     break;
             }
+            // TODO Should we sleep?
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException ignored) {
+            }
         }
 
-        // Enter LEADER mode
-        // Connect to anchor node
-        // TODO Should we already accept client connections?
-        // Do an MQTT SUB on the /$SYS/COLLIN/leaders topic
+        // TODO Should we already accept client connections? We don't really have a choice, have we?
 
-        // Build a list of other leaders
-        // Add them to monitoring
-        // Check if any other leader is below latencyThreshold
-
-        // Connect to the leader with the lowest delay
-        // "Hello, I'd like to join your group and I do want to be the leader / I don't want to be a leader"
-        // Do leader election between the two
-        // Either doLeader or doNonLeader as a result
-
-        // TODO What if another node joins while two are already negotiating? --> Wait and then redirect to new leader if necessary
+        // TODO What if another node joins while two are already negotiating? --> Just deny (we might need a retry mechanism here)
 
     }
 
     private void doBootstrap() {
-
-
         transitionToLeader();
     }
 
     private void transitionToLeader() {
+        leader = null;
+
         anchorConnection = new AnchorConnection(cloudAnchor, localInterfaceAddress);
         anchorConnection.startLeaderAnnouncement();
-
-        leader = null;
-        redirectPeers = false;
+        // TODO send client subscriptions to cloud anchor
 
         previousLeaders = new HashSet<>();
 
@@ -120,80 +109,148 @@ public class DelaygroupingOrchestrator {
                     minimumDelay = averageDelay;
                     minimumDelayLeader = leader;
                 }
-            } catch (InterruptedException | ExecutionException ignored) {}
+            } catch (InterruptedException | ExecutionException ignored) {
+            }
         }
 
         if (minimumDelayLeader != null) {
             // if we have a candidate start negotiation (see handlers)
             var newLeaderConnection = peerConnectionManager.getConnectionToPeer(minimumDelayLeader);
             newLeaderConnection.registerMessageHandler(this::handleMembershipMessages, PeerMessageType.MEMBERSHIP);
-            newLeaderConnection.sendMessage(PeerMessageMembership.join());
+            newLeaderConnection.sendMessage(PeerMessageMembership.join(leaderCapabilityMeasure));
         }
-
-        // Collect subscriptions and forward them to cloud anchor
-
-        // Forward matching PUBs from cloud anchor to group members
-
-        // Forward all PUBs from group members to cloud
     }
 
-    private void transitionToNonLeader() {
+    private void transitionToNonLeader(InetAddress newLeader) {
+        leader = newLeader;
+
         // stop all leader-related functions
         connectionMonitor.removeAll();
         anchorConnection.shutdown();
         anchorConnection = null;
-        // redirect all clients to new leader
-        // enable automatic redirection of connecting peers to leader
-        // send subscriptions to new leader
 
+        connectionMonitor.addMonitoredPeer(newLeader);
+        groupMembers.forEach(groupMember ->
+            peerConnectionManager.getConnectionToPeer(groupMember).sendMessage(PeerMessageRedirect.redirect(newLeader)));
+
+        groupMembers.clear();
+        peerSubscriptions.clear();
 
         state = OrchestratorState.NON_LEADER;
     }
 
     private void doNonLeader() {
-        // forward all group internal publish messages to all other group members
-        // forward all other publish messages (i.e. no group internal subscribers) to leader
-        // forward subscribe messages to all group members
-        // TODO monitor latency to group leader and break connection if threshold exceeded (is that a good idea?)
+        // monitor latency to group leader and switch to leader (effectively leaving group)
+        Double leaderDelay = null;
+        try {
+            leaderDelay = connectionMonitor.getAverageDelay(leader).get();
+            if (leaderDelay > latencyThreshold) {
+                transitionToLeader();
+            }
+        } catch (InterruptedException | ExecutionException ignored) {
+        }
     }
 
     private void handleMembershipMessages(PeerMessage msg, PeerConnection origin) {
         PeerMessageMembership message = (PeerMessageMembership) msg;
         switch (message.getSignal()) {
             case JOIN:
-                break;
-            case JOIN_ACK:
-                origin.sendMessage(PeerMessageMembership.electionRequest(leaderCapabilityMeasure));
-                break;
-            case ELECTION_REQUEST:
-                if (leaderCapabilityMeasure >= message.getElectionValue()) {
-                    origin.sendMessage(PeerMessageMembership.electionResponse(false));
+                // Only allow join if we are a leader
+                if (state.equals(OrchestratorState.LEADER)) {
+                    // Check if we should continue to be the leader or let the new guy lead
+                    if (leaderCapabilityMeasure >= message.getElectionValue()) {
+                        origin.sendMessage(PeerMessageMembership.joinAck(false));
+                        groupMembers.add(origin.getRemoteAddress());
+                    } else {
+                        origin.sendMessage(PeerMessageMembership.joinAck(true));
+                        transitionToNonLeader(origin.getRemoteAddress());
+                    }
                 } else {
-                    origin.sendMessage(PeerMessageMembership.electionResponse(true));
+                    // deny join, the peer that tried to join our group should reevaluate its leader list
+                    origin.sendMessage(PeerMessageMembership.deny());
                 }
                 break;
-            case ELECTION_RESPONSE:
+            case JOIN_ACK:
+                // We are allowed to join. Check if we should become the new leader or join as a regular member
+                if (message.isShouldBeLeader()) {
+                    if (state.equals(OrchestratorState.NON_LEADER)) {
+                        transitionToLeader();
+                    }
+                } else {
+                    if (state.equals(OrchestratorState.LEADER)) {
+                        // we join the other group and should not be leader
+                        transitionToNonLeader(origin.getRemoteAddress());
+                    }
+                }
                 break;
+            // TODO We might need a JOIN_DONE / JOIN_ACKACK to make sure we don't start migrating peers when the new leader is not ready yet
         }
     }
 
+    private void handleRedirectMessages(PeerMessage msg, PeerConnection origin) {
+        peerConnectionManager.closeConnectionToPeer(origin.getRemoteAddress());
+
+        if (state.equals(OrchestratorState.NON_LEADER)) {
+            // connect to new leader (we are being migrated)
+            var message = (PeerMessageRedirect) msg;
+            peerConnectionManager.getConnectionToPeer(message.getTarget());
+            // TODO resend all client subscriptions (this must happen after successful join, we need to keep track of that)
+        }
+        // ignore redirects if we are a leader
+    }
+
+    private void handlePublishMessages(PeerMessage msg, PeerConnection origin) {
+        var message = (PeerMessagePublish) msg;
+        message.getPublishMessages().forEach(this::internalPublish);
+        if (state.equals(OrchestratorState.LEADER)) {
+            anchorConnection.publish(message);
+        }
+    }
+
+    private void handleSubscribeMessages(PeerMessage msg, PeerConnection origin) {
+        // TODO Store subscription as peer subs separate from client subs
+        // TODO Forward subscription to cloud anchor if leader
+    }
+
     private void handleNewPeerConnection(PeerConnection connection) {
+        // this is run synchronously in channel initializer, so don't do anything costly here!
         connection.registerMessageHandler(this::handleMembershipMessages, PeerMessageType.MEMBERSHIP);
+        connection.registerMessageHandler(this::handleRedirectMessages, PeerMessageType.REDIRECT);
+        connection.registerMessageHandler(this::handlePublishMessages, PeerMessageType.PUBLISH);
+        connection.registerMessageHandler(this::handleSubscribeMessages, PeerMessageType.SUBSCRIBE);
     }
 
     private void handleInterceptedPublish(MqttPublishMessage interceptedMsg) {
-        // TODO Implement... :-)
+
+        // TODO Forward publish to all group members (if group subscription matches)
+        // TODO ALL GROUP MEMBERS SOMEHOW NEED TO KEEP TRACK OF OTHER GROUP MEMBERS... leader could forward join events (then we'd also need explicit leave event)
+        if (state.equals(OrchestratorState.LEADER)) {
+            anchorConnection.publish(interceptedMsg);
+        }
+        // TODO Forward publish to cloud anchor if leader
     }
 
     private void handleInterceptedSubscribe(String topicFilter) {
-        // TODO Implement...
+        // TODO Store subscription separate from peer subs (for group publish and in case of group migration)
+
+        // TODO Forward subscription to all group members
+        // TODO Forward subscription to cloud anchor if leader
+    }
+
+    private void handleAnchorPublishMessages() {
+        // TODO Do internal publish
+        // TODO Forward publish to all group members (if subscriptions match)
+    }
+
+    private void internalPublish(MqttPublishMessage msg) {
+        internalPublishFunction.accept(msg, localInterfaceAddress.getHostAddress());
     }
 
     public Consumer<MqttPublishMessage> getInterceptHandler() {
         return this::handleInterceptedPublish;
     }
 
-    public Consumer<String> getSubscibeHandler() {
+    public Consumer<String> getSubscribeHandler() {
         return this::handleInterceptedSubscribe;
     }
 

@@ -34,11 +34,11 @@ public class PeerConnectionManager {
     private Bootstrap bootstrap;
     private ServerBootstrap serverBootstrap;
     private int bindAndConnectPort = 1884;
-    private Consumer<PeerConnection> newConnectionhandler;
+    private Consumer<PeerConnection> newConnectionHandler;
     private ExecutorService notificationExecutor = Executors.newCachedThreadPool();
 
     public PeerConnectionManager(InetAddress bindAddress, Consumer<PeerConnection> newConnectionHandler) {
-        this.newConnectionhandler = newConnectionHandler;
+        this.newConnectionHandler = newConnectionHandler;
         initializeClientBootstrap(bindAddress);
         initializeServerBootstrap();
 
@@ -108,7 +108,8 @@ public class PeerConnectionManager {
     }
 
     private void notifyNewConnection(PeerConnection connection) {
-        notificationExecutor.execute(() -> newConnectionhandler.accept(connection));
+        // do this synchronous so that we can make sure that the handler doesn't miss any messages
+        newConnectionHandler.accept(connection);
     }
 
     private PeerConnection getOrCreateConnection(InetAddress peerAddress) {

@@ -9,6 +9,7 @@ import io.netty.channel.ChannelOutboundInvoker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;
@@ -135,6 +136,10 @@ public class PeerConnection {
                 handlersByType.get(type).remove(handler);
             }
         }
+    }
+
+    public InetAddress getRemoteAddress() {
+        return remoteAddress.getAddress();
     }
 
     void close() {
