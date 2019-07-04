@@ -22,8 +22,8 @@ public class MqttConnectionTest {
         MqttConnection conn1 = new MqttConnection("tcp://localhost:1883", "conn1");
         MqttConnection conn2 = new MqttConnection("tcp://localhost:1883", "conn2");
 
-        conn1.addMessageHandler("test", receivedMessages1::add);
-        conn2.addMessageHandler("test2", receivedMessages2::add);
+        conn1.addMessageHandlerForTopic("test", receivedMessages1::add);
+        conn2.addMessageHandlerForTopic("test2", receivedMessages2::add);
 
         conn1.addSubscription("test");
         conn2.addSubscription("test2");

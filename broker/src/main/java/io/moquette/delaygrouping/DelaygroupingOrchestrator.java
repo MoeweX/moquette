@@ -11,9 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.util.HashSet;
-import java.util.Random;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.function.BiConsumer;
@@ -35,7 +33,7 @@ public class DelaygroupingOrchestrator {
     private PeerConnectionManager peerConnectionManager;
     private int leaderCapabilityMeasure = new Random().nextInt(); // TODO Add this to config?
     private Set<InetAddress> groupMembers = ConcurrentHashMap.newKeySet();
-    private SubscriptionStore peerSubscriptions = new SubscriptionStore();
+    private SubscriptionStore groupSubscriptions = new SubscriptionStore();
     private SubscriptionStore clientSubscriptions = new SubscriptionStore();
 
     public DelaygroupingOrchestrator(DelaygroupingConfiguration config, BiConsumer<MqttPublishMessage, String> internalPublishFunction) {
@@ -43,6 +41,7 @@ public class DelaygroupingOrchestrator {
         cloudAnchor = config.getAnchorNodeAddress();
         latencyThreshold = config.getLatencyThreshold();
         this.localInterfaceAddress = config.getHost();
+        clientId = localInterfaceAddress.getHostAddress();
         this.connectionMonitor = new ConnectionMonitor(1, 20);
         peerConnectionManager = new PeerConnectionManager(localInterfaceAddress, this::handleNewPeerConnection);
         leader = null;
@@ -130,11 +129,10 @@ public class DelaygroupingOrchestrator {
         anchorConnection = null;
 
         connectionMonitor.addMonitoredPeer(newLeader);
-        groupMembers.forEach(groupMember ->
-            peerConnectionManager.getConnectionToPeer(groupMember).sendMessage(PeerMessageRedirect.redirect(newLeader)));
+        sendMessageToGroup(PeerMessageRedirect.redirect(newLeader));
 
         groupMembers.clear();
-        peerSubscriptions.clear();
+        groupSubscriptions.clear();
 
         state = OrchestratorState.NON_LEADER;
     }
@@ -157,21 +155,24 @@ public class DelaygroupingOrchestrator {
             case JOIN:
                 // Only allow join if we are a leader
                 if (state.equals(OrchestratorState.LEADER)) {
-                    // Check if we should continue to be the leader or let the new guy lead
                     if (leaderCapabilityMeasure >= message.getElectionValue()) {
+                        // We'll continue to be the leader and just add a new member
                         origin.sendMessage(PeerMessageMembership.joinAck(false));
+                        origin.sendMessage(PeerMessageMembership.groupUpdate(null, new ArrayList<>(groupMembers)));
+                        sendMessageToGroup(PeerMessageMembership.groupUpdate(null, Arrays.asList(origin.getRemoteAddress())));
                         groupMembers.add(origin.getRemoteAddress());
                     } else {
+                        // We'll let the new peer be the leader
                         origin.sendMessage(PeerMessageMembership.joinAck(true));
                         transitionToNonLeader(origin.getRemoteAddress());
                     }
                 } else {
-                    // deny join, the peer that tried to join our group should reevaluate its leader list
+                    // we're not leader so deny join, the peer that tried to join our group should reevaluate its leader list
                     origin.sendMessage(PeerMessageMembership.deny());
                 }
                 break;
             case JOIN_ACK:
-                // We are allowed to join. Check if we should become the new leader or join as a regular member
+                // We are allowed to join!
                 if (message.isShouldBeLeader()) {
                     if (state.equals(OrchestratorState.NON_LEADER)) {
                         transitionToLeader();
@@ -182,6 +183,21 @@ public class DelaygroupingOrchestrator {
                         transitionToNonLeader(origin.getRemoteAddress());
                     }
                 }
+                break;
+            case LEAVE:
+                if (state.equals(OrchestratorState.LEADER)) {
+                    peerConnectionManager.closeConnectionToPeer(message.getLeavingPeer());
+                    groupMembers.remove(message.getLeavingPeer());
+                    sendMessageToGroup(PeerMessageMembership.groupUpdate(Arrays.asList(message.getLeavingPeer()), null));
+                }
+                // Ignore LEAVE if we're not leader
+                break;
+            case GROUP_UPDATE:
+                if (state.equals(OrchestratorState.NON_LEADER)) {
+                    groupMembers.removeAll(message.getLeftPeers());
+                    groupMembers.addAll(message.getJoinedPeers());
+                }
+                // Ignore GROUP_UPDATE if we're leader
                 break;
             // TODO We might need a JOIN_DONE / JOIN_ACKACK to make sure we don't start migrating peers when the new leader is not ready yet
         }
@@ -208,11 +224,13 @@ public class DelaygroupingOrchestrator {
     }
 
     private void handleSubscribeMessages(PeerMessage msg, PeerConnection origin) {
-        // TODO Store subscription as peer subs separate from client subs
+        var message = (PeerMessageSubscribe) msg;
+        groupSubscriptions.addSubscription(origin.getRemoteAddress().getHostAddress(), message.getTopicFilter());
         // TODO Forward subscription to cloud anchor if leader
     }
 
     private void handleNewPeerConnection(PeerConnection connection) {
+        // TODO We might wanna serialize event processing (at least membership messages)
         // this is run synchronously in channel initializer, so don't do anything costly here!
         connection.registerMessageHandler(this::handleMembershipMessages, PeerMessageType.MEMBERSHIP);
         connection.registerMessageHandler(this::handleRedirectMessages, PeerMessageType.REDIRECT);
@@ -221,29 +239,43 @@ public class DelaygroupingOrchestrator {
     }
 
     private void handleInterceptedPublish(MqttPublishMessage interceptedMsg) {
-
-        // TODO Forward publish to all group members (if group subscription matches)
-        // TODO ALL GROUP MEMBERS SOMEHOW NEED TO KEEP TRACK OF OTHER GROUP MEMBERS... leader could forward join events (then we'd also need explicit leave event)
         if (state.equals(OrchestratorState.LEADER)) {
             anchorConnection.publish(interceptedMsg);
         }
-        // TODO Forward publish to cloud anchor if leader
+        if (groupSubscriptions.matches(interceptedMsg.variableHeader().topicName())) {
+            sendMessageToGroup(PeerMessagePublish.fromMessage(interceptedMsg));
+        }
     }
 
     private void handleInterceptedSubscribe(String topicFilter) {
-        // TODO Store subscription separate from peer subs (for group publish and in case of group migration)
+        // We need to keep track of our clients subscriptions for group migration (to send our subscriptions to the new leader)
+        clientSubscriptions.addSubscription(clientId, topicFilter);
 
-        // TODO Forward subscription to all group members
-        // TODO Forward subscription to cloud anchor if leader
+        sendMessageToGroup(PeerMessageSubscribe.fromTopicFilter(topicFilter));
+
+        if (state.equals(OrchestratorState.LEADER)) {
+            // TODO Forward subscription to cloud anchor if leader (implement subscribe on cloud anchor)
+
+        }
     }
 
-    private void handleAnchorPublishMessages() {
+    private void handleAnchorPublishMessage() {
+        // TODO Check if this is properly wired
         // TODO Do internal publish
         // TODO Forward publish to all group members (if subscriptions match)
     }
 
+    private void sendMessageToGroup(PeerMessage msg) {
+        groupMembers.forEach(member -> {
+            // Don't send to ourselves
+            if (!member.equals(localInterfaceAddress)) {
+                peerConnectionManager.getConnectionToPeer(member).sendMessage(msg);
+            }
+        });
+    }
+
     private void internalPublish(MqttPublishMessage msg) {
-        internalPublishFunction.accept(msg, localInterfaceAddress.getHostAddress());
+        internalPublishFunction.accept(msg, clientId);
     }
 
     public Consumer<MqttPublishMessage> getInterceptHandler() {

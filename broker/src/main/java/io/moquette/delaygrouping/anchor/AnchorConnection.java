@@ -1,5 +1,6 @@
 package io.moquette.delaygrouping.anchor;
 
+import io.moquette.delaygrouping.Utils;
 import io.moquette.delaygrouping.peering.messaging.PeerMessagePublish;
 import io.netty.handler.codec.mqtt.MqttPublishMessage;
 import org.eclipse.paho.client.mqttv3.MqttException;
@@ -29,6 +30,7 @@ public class AnchorConnection {
         try {
             String serverURI = "tcp://" + anchorAddress.getHostName() + ":" + anchorAddress.getPort();
             mqttConnection = new MqttConnection(serverURI, clientId);
+            mqttConnection.setMessageHandler(this::handleMqttReceive);
         } catch (MqttException e) {
             LOG.error("Could not connect to anchor: {}", e);
         }
@@ -36,7 +38,6 @@ public class AnchorConnection {
 
     public void startLeaderAnnouncement() {
         // Start leader announcement AND start listening to other announcements
-        mqttConnection.addMessageHandler(LEADER_ANNOUNCEMENT_TOPIC, this::handleLeaderReceive);
         mqttConnection.addSubscription(LEADER_ANNOUNCEMENT_TOPIC);
         active = true;
 
@@ -55,7 +56,6 @@ public class AnchorConnection {
 
     public void stopLeaderAnnouncement() {
         // Stop leader announcement AND stop listening to other announcements
-        mqttConnection.removeMessageHandler(LEADER_ANNOUNCEMENT_TOPIC);
         mqttConnection.removeSubscription(LEADER_ANNOUNCEMENT_TOPIC);
         active = false;
 
@@ -87,6 +87,10 @@ public class AnchorConnection {
         mqttConnection.publish(new Message(topic, payload));
     }
 
+    public void addSubscription(String topicFilter) {
+        mqttConnection.addSubscription(topicFilter);
+    }
+
     private void handleLeaderReceive(Message msg) {
         var leaderHostName = new String(msg.payload, StandardCharsets.UTF_8);
         try {
@@ -100,7 +104,9 @@ public class AnchorConnection {
     }
 
     private void handleMqttReceive(Message msg) {
-        if (mqttCallback != null) {
+        if (Utils.mqttTopicMatchesSubscription(msg.topic, LEADER_ANNOUNCEMENT_TOPIC)) {
+            handleLeaderReceive(msg);
+        } else {
             mqttCallback.accept(msg);
         }
     }

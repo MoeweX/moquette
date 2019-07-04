@@ -23,9 +23,7 @@ public class PeeringDecoder extends MessageToMessageDecoder<PeerMessage> {
             if (message != null) deserializedMessages.add(message);
         }
 
-        msg.publishMessages = deserializedMessages;
-
-        return msg;
+        return PeerMessagePublish.fromMessageList(deserializedMessages);
     }
 
     @Override

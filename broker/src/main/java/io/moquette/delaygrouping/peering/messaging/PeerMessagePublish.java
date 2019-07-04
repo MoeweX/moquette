@@ -10,11 +10,22 @@ public class PeerMessagePublish extends PeerMessage {
 
     // TODO Encapsulate access to members (or refactor into subtype holding byte payload only)
     List<byte[]> payload = null;
-    transient List<MqttPublishMessage> publishMessages = new ArrayList<>();
+    private transient List<MqttPublishMessage> publishMessages = new ArrayList<>();
 
-    public PeerMessagePublish(Collection<MqttPublishMessage> messages) {
+    private PeerMessagePublish() {
         super(PeerMessageType.PUBLISH);
-        this.publishMessages.addAll(messages);
+    }
+
+    public static PeerMessagePublish fromMessage(MqttPublishMessage pubMsg) {
+        var msg = new PeerMessagePublish();
+        msg.publishMessages.add(pubMsg);
+        return msg;
+    }
+
+    public static PeerMessagePublish fromMessageList(Collection<MqttPublishMessage> messages) {
+        var msg = new PeerMessagePublish();
+        msg.publishMessages.addAll(messages);
+        return msg;
     }
 
     @Override

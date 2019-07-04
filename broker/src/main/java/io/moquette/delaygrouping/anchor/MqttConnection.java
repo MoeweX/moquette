@@ -1,12 +1,10 @@
 package io.moquette.delaygrouping.anchor;
 
-import io.moquette.delaygrouping.Utils;
 import org.eclipse.paho.client.mqttv3.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.*;
 import java.util.function.BiConsumer;
@@ -21,7 +19,7 @@ public class MqttConnection {
     private LinkedBlockingDeque<Message> sendQueue = new LinkedBlockingDeque<>();
     private Set<String> subscribedTopics = ConcurrentHashMap.newKeySet();
     private Set<String> intendedTopics = ConcurrentHashMap.newKeySet();
-    private Map<String, Consumer<Message>> messageHandlers = new ConcurrentHashMap<>();
+    private Consumer<Message> messageHandler;
     private boolean connected;
 
     public MqttConnection(String serverURI, String clientId) throws MqttException {
@@ -91,12 +89,8 @@ public class MqttConnection {
         return options;
     }
 
-    public void addMessageHandler(String topic, Consumer<Message> handler) {
-        this.messageHandlers.put(topic, handler);
-    }
-
-    public void removeMessageHandler(String topic) {
-        this.messageHandlers.remove(topic);
+    public void setMessageHandler(Consumer<Message> handler) {
+        messageHandler = handler;
     }
 
     private Future subscribe(String topic) {
@@ -154,11 +148,7 @@ public class MqttConnection {
     private void messageConsumer(String topic, MqttMessage msg) {
         var message = new Message(topic, msg.getPayload());
 
-        messageHandlers.forEach((subscription, handler) -> {
-            if (Utils.mqttTopicMatchesSubscription(topic, subscription)) {
-                resultExecutor.execute(() -> handler.accept(message));
-            }
-        });
+        resultExecutor.execute(() -> messageHandler.accept(message));
     }
 
     private MqttCallback createCallback(BiConsumer<String, MqttMessage> consumer) {

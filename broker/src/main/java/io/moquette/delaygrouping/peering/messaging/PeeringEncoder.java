@@ -18,7 +18,7 @@ public class PeeringEncoder extends MessageToMessageEncoder<PeerMessage> {
     private static PeerMessagePublish encodePublish(ByteBufAllocator allocator, PeerMessagePublish msg) {
         // TODO Performance: if payload is already populated we could skip this.
         List<byte[]> serializedMessages = new ArrayList<>();
-        for (MqttPublishMessage mqttPubMsg : msg.publishMessages) {
+        for (MqttPublishMessage mqttPubMsg : msg.getPublishMessages()) {
             ByteBuf byteBufMsg = MqttCodecWrapper.encodeMqttMessage(allocator, mqttPubMsg);
             mqttPubMsg.release();
             serializedMessages.add(getByteArray(byteBufMsg));
