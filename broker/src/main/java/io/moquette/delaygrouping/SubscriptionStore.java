@@ -40,6 +40,10 @@ public class SubscriptionStore {
         }
     }
 
+    public Set<String> getFlattened() {
+        return new HashSet<>(subscriptions);
+    }
+
     public void clear() {
         subscriptions.clear();
         subsPerClient.clear();

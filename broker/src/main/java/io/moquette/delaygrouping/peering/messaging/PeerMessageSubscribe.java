@@ -1,19 +1,21 @@
 package io.moquette.delaygrouping.peering.messaging;
 
+import java.util.Collection;
+
 public class PeerMessageSubscribe extends PeerMessage {
-    private String topicFilter;
+    private Collection<String> topicFilters;
 
     private PeerMessageSubscribe() {
         super(PeerMessageType.SUBSCRIBE);
     }
 
-    public static PeerMessageSubscribe fromTopicFilter(String topicFilter) {
+    public static PeerMessageSubscribe fromTopicFilter(Collection<String> topicFilters) {
         var msg = new PeerMessageSubscribe();
-        msg.topicFilter = topicFilter;
+        msg.topicFilters = topicFilters;
         return msg;
     }
 
-    public String getTopicFilter() {
-        return topicFilter;
+    public Collection<String> getTopicFilters() {
+        return topicFilters;
     }
 }

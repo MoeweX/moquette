@@ -30,8 +30,19 @@ public class PeerMessageMembership extends PeerMessage {
         return msg;
     }
 
+    public static PeerMessageMembership joinAckAck(PeerMessageMembership joinAck) {
+        var msg = new PeerMessageMembership(MembershipSignal.JOIN_ACKACK);
+        // invert this as the receiver should do the exact opposite
+        msg.shouldBeLeader = !joinAck.shouldBeLeader;
+        return msg;
+    }
+
     public static PeerMessageMembership deny() {
         return new PeerMessageMembership(MembershipSignal.DENY);
+    }
+
+    public static PeerMessageMembership busy() {
+        return new PeerMessageMembership(MembershipSignal.BUSY);
     }
 
     public static PeerMessageMembership leave(InetAddress leavingPeer) {
@@ -74,7 +85,9 @@ public class PeerMessageMembership extends PeerMessage {
     public enum MembershipSignal {
         JOIN,
         JOIN_ACK,
+        JOIN_ACKACK,
         DENY,
+        BUSY,
         LEAVE,
         GROUP_UPDATE,
     }

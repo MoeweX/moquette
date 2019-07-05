@@ -1,11 +1,18 @@
 package io.moquette.delaygrouping;
 
+import io.netty.buffer.Unpooled;
+import io.netty.handler.codec.mqtt.MqttMessageBuilders;
+import io.netty.handler.codec.mqtt.MqttMessageFactory;
+import io.netty.handler.codec.mqtt.MqttPublishMessage;
+import io.netty.handler.codec.mqtt.MqttQoS;
+
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.util.Collections;
 import java.util.Optional;
+import java.util.Random;
 import java.util.regex.Pattern;
 
 public class Utils {
@@ -38,6 +45,16 @@ public class Utils {
 
         var pattern = Pattern.compile(subscriptionRegex);
         return pattern.matcher(topic).matches();
+    }
+
+    public static MqttPublishMessage mqttPublishMessageFromValues(String topic, byte[] payload) {
+        return MqttMessageBuilders.publish()
+            .topicName(topic)
+            .payload(Unpooled.buffer().writeBytes(payload))
+            .messageId(new Random().nextInt())
+            .qos(MqttQoS.AT_LEAST_ONCE)
+            .retained(false)
+            .build();
     }
 
 }
