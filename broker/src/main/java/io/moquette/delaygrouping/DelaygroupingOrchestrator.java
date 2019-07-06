@@ -37,6 +37,7 @@ public class DelaygroupingOrchestrator {
     private SubscriptionStore groupSubscriptions = new SubscriptionStore();
     private SubscriptionStore clientSubscriptions = new SubscriptionStore();
     private ScheduledExecutorService peerMessagingExecutor = Executors.newSingleThreadScheduledExecutor();
+    private InetAddress joiningPeer;
 
     public DelaygroupingOrchestrator(DelaygroupingConfiguration config, BiConsumer<MqttPublishMessage, String> internalPublishFunction) {
         this.internalPublishFunction = internalPublishFunction;
@@ -47,6 +48,7 @@ public class DelaygroupingOrchestrator {
         this.connectionMonitor = new ConnectionMonitor(1, 20);
         peerConnectionManager = new PeerConnectionManager(localInterfaceAddress, this::handleNewPeerConnection);
         leader = null;
+        joiningPeer = null;
 
         state = OrchestratorState.BOOTSTRAP;
 
@@ -81,7 +83,10 @@ public class DelaygroupingOrchestrator {
     }
 
     private void transitionToLeader() {
+        LOG.info("{}: Switching to leader mode", clientId);
+
         if (leader != null) {
+            LOG.info("Leaving existing group with leader {}", leader.getHostName());
             sendMessageToLeader(PeerMessageMembership.leave(localInterfaceAddress));
         }
         leader = null;
@@ -119,6 +124,7 @@ public class DelaygroupingOrchestrator {
         }
 
         if (minimumDelayLeader != null) {
+            LOG.info("Found other leader {} with delay {}ms", minimumDelayLeader.getHostName(), minimumDelay);
             // if we have a candidate start negotiation (see handlers)
             var newLeaderConnection = peerConnectionManager.getConnectionToPeer(minimumDelayLeader);
             newLeaderConnection.sendMessage(PeerMessageMembership.join(leaderCapabilityMeasure));
@@ -126,6 +132,8 @@ public class DelaygroupingOrchestrator {
     }
 
     private void transitionToNonLeader(InetAddress newLeader) {
+        LOG.info("{}: Switching to non-leader mode", clientId);
+
         // stop all leader-related functions
         connectionMonitor.removeAll();
         anchorConnection.shutdown();
@@ -156,28 +164,32 @@ public class DelaygroupingOrchestrator {
         try {
             leaderDelay = connectionMonitor.getAverageDelay(leader).get();
             if (leaderDelay > latencyThreshold) {
+                LOG.info("Our leader exceed the latency threshold ({} > {})", leaderDelay, latencyThreshold);
                 transitionToLeader();
             }
-        } catch (InterruptedException | ExecutionException ignored) {
-        }
+        } catch (InterruptedException | ExecutionException ignored) {}
     }
 
     private void handleMembershipMessages(PeerMessageMembership msg, PeerConnection origin) {
         switch (msg.getSignal()) {
             case JOIN:
+                if (joiningPeer != null) {
+                    origin.sendMessage(PeerMessageMembership.busy());
+                    return;
+                }
                 // Only allow join if we are a leader
                 if (state.equals(OrchestratorState.LEADER)) {
                     if (leaderCapabilityMeasure >= msg.getElectionValue()) {
-                        // We'll continue to be the leader and just add a new member
+                        LOG.info("Got JOIN request. New peer {} will join my group as member.", origin.getRemoteAddress().getHostName());
                         origin.sendMessage(PeerMessageMembership.joinAck(false));
                         origin.sendMessage(PeerMessageMembership.groupUpdate(null, new ArrayList<>(groupMembers)));
-
                     } else {
-                        // We'll let the new peer be the leader
+                        LOG.info("Got JOIN request. New peer {} will be the leader.", origin.getRemoteAddress().getHostName());
                         origin.sendMessage(PeerMessageMembership.joinAck(true));
                     }
+                    joiningPeer = origin.getRemoteAddress();
                 } else {
-                    // we're not leader so deny join, the peer that tried to join our group should reevaluate its leader list
+                    LOG.info("Got JOIN request from {} but I'm not leader. Denying...", origin.getRemoteAddress().getHostName());
                     origin.sendMessage(PeerMessageMembership.deny());
                 }
                 break;
@@ -185,53 +197,65 @@ public class DelaygroupingOrchestrator {
                 // We are allowed to join!
                 if (msg.isShouldBeLeader()) {
                     if (state.equals(OrchestratorState.NON_LEADER)) {
-                        transitionToLeader();
-                        origin.sendMessage(PeerMessageMembership.joinAckAck(msg));
+                        transitionToLeader(); // this should theoretically never be the case
                     }
+                    LOG.info("Got JOIN_ACK from {}. I should be leader!", origin.getRemoteAddress().getHostName());
+                    origin.sendMessage(PeerMessageMembership.joinAckAck(msg));
                 } else {
                     if (state.equals(OrchestratorState.LEADER)) {
                         // we join the other group and should not be leader
-                        transitionToNonLeader(origin.getRemoteAddress());
-                        origin.sendMessage(PeerMessageMembership.joinAckAck(msg));
+                        transitionToNonLeader(origin.getRemoteAddress()); // this should theoretically always be the case (except for after we've implemented full JOIN on migrate)
                     }
+                    LOG.info("Got JOIN_ACK from {}. I've stepped down to NON_LEADER. She will take over.", origin.getRemoteAddress().getHostName());
+                    origin.sendMessage(PeerMessageMembership.joinAckAck(msg));
                 }
                 break;
             case JOIN_ACKACK:
                 if (state.equals(OrchestratorState.LEADER)) {
                     if (msg.isShouldBeLeader()) {
-                        // the other peer joins as client so update our group
+                        LOG.info("Got JOIN_ACKACK from {}. She joins as group member, so just add her.", origin.getRemoteAddress().getHostName());
                         sendMessageToGroup(PeerMessageMembership.groupUpdate(null, Arrays.asList(origin.getRemoteAddress())));
                         groupMembers.add(origin.getRemoteAddress());
+                        LOG.info("Group members after JOIN: {}", groupMembers);
                     } else {
-                        // the other peer confirms that he switched to leader mode and is therefore ready to accept peers (including ourselves)
+                        LOG.info("Got JOIN_ACKACK from {}. She joins as leader and confirmed switching.", origin.getRemoteAddress().getHostName());
                         transitionToNonLeader(origin.getRemoteAddress());
                     }
+                    joiningPeer = null;
+                } else {
+                    LOG.warn("Got JOIN_ACKACK from {}. Ignoring it as I'm NOT LEADER!", origin.getRemoteAddress().getHostName());
                 }
                 // ignore JOIN_ACKACK if we're not leader
                 break;
             case BUSY:
-                // Schedule retry after random wait time
+                LOG.info("Got BUSY from {}. Scheduling to retry JOIN after random time.", origin.getRemoteAddress().getHostName());
                 peerMessagingExecutor.schedule(
                     () -> origin.sendMessage(PeerMessageMembership.join(leaderCapabilityMeasure)),
                     new Random().nextInt(1000), TimeUnit.MILLISECONDS);
                 break;
             case DENY:
-                // Do nothing and just let the main loop do its thing
+                LOG.info("Got DENY from {}.", origin.getRemoteAddress().getHostName());
                 break;
             case LEAVE:
                 if (state.equals(OrchestratorState.LEADER)) {
+                    LOG.info("Got LEAVE from {}. Removing her from group.", origin.getRemoteAddress().getHostName());
                     peerConnectionManager.closeConnectionToPeer(msg.getLeavingPeer());
                     groupMembers.remove(msg.getLeavingPeer());
                     sendMessageToGroup(PeerMessageMembership.groupUpdate(Arrays.asList(msg.getLeavingPeer()), null));
+                    LOG.info("Group members after LEAVE: {}", groupMembers);
+                } else {
+                    LOG.warn("Got LEAVE from {}. Ignoring it, because I'm NOT LEADER!", origin.getRemoteAddress().getHostName());
                 }
-                // Ignore LEAVE if we're not leader
                 break;
             case GROUP_UPDATE:
                 if (state.equals(OrchestratorState.NON_LEADER)) {
-                    groupMembers.removeAll(msg.getLeftPeers());
-                    groupMembers.addAll(msg.getJoinedPeers());
+                    LOG.info("Got GROUP_UPDATE from {}. Updating group member info (I'm NON_LEADER).", origin.getRemoteAddress().getHostName());
+                } else if (state.equals(OrchestratorState.LEADER)) {
+                    LOG.info("Got GROUP_UPDATE from {}. Updating group member info (I'm LEADER).", origin.getRemoteAddress().getHostName());
                 }
-                // Ignore GROUP_UPDATE if we're leader
+                groupMembers.removeAll(msg.getLeftPeers());
+                groupMembers.addAll(msg.getJoinedPeers());
+                LOG.info("Group members after GROUP_UPDATE: {}", groupMembers);
                 break;
             // TODO Deny all group modifications while process is ongoing (we might indeed need an additional ack for that... and some automatic retrying)
         }
@@ -239,19 +263,23 @@ public class DelaygroupingOrchestrator {
 
     private void handleRedirectMessages(PeerMessageRedirect msg, PeerConnection origin) {
         if (state.equals(OrchestratorState.NON_LEADER)) {
+            LOG.info("Got REDIRECT from {}. Migrating to new leader {}", origin.getRemoteAddress().getHostName(), msg.getTarget());
             peerConnectionManager.closeConnectionToPeer(leader);
             connectionMonitor.removeAll();
             leader = msg.getTarget();
             peerConnectionManager.getConnectionToPeer(leader);
             connectionMonitor.addMonitoredPeer(leader);
             // Lets not do the whole JOIN thing for now and just trust in the new leader having received all its leader state (although it would probably be more correct, i.e. safer)
+        } else {
+            LOG.warn("Got REDIRECT from {}. Ignoring it as I'm LEADER!", origin.getRemoteAddress().getHostName());
         }
-        // ignore REDIRECT if we're leader (as its supposed to steer non-leaders to a new leader)
     }
 
     private void handlePublishMessages(PeerMessagePublish msg, PeerConnection origin) {
+        LOG.debug("Got PUBLISH from {}: {}", origin.getRemoteAddress().getHostName(), msg.getPublishMessages());
         msg.getPublishMessages().forEach(this::internalPublish);
         if (state.equals(OrchestratorState.LEADER)) {
+            LOG.debug("Relaying PUBLISH to anchor");
             anchorConnection.publish(msg);
         }
     }
@@ -286,6 +314,7 @@ public class DelaygroupingOrchestrator {
     }
 
     private void handleInterceptedPublish(MqttPublishMessage interceptedMsg) {
+        LOG.info("Intercepted PUBLISH from clients: {}", interceptedMsg);
         if (state.equals(OrchestratorState.LEADER)) {
             anchorConnection.publish(interceptedMsg);
         }
@@ -295,6 +324,7 @@ public class DelaygroupingOrchestrator {
     }
 
     private void handleInterceptedSubscribe(String topicFilter) {
+        LOG.info("Intercepted SUBSCRIBE from clients: ", topicFilter);
         // We need to keep track of our clients subscriptions for group migration (to send our subscriptions to the new leader)
         clientSubscriptions.addSubscription(clientId, topicFilter);
 
@@ -307,6 +337,7 @@ public class DelaygroupingOrchestrator {
     }
 
     private void handleAnchorPublishMessage(Message msg) {
+        LOG.info("Got MQTT PUBLISH from anchor: {}", msg);
         var mqttPubMsg = Utils.mqttPublishMessageFromValues(msg.topic, msg.payload);
         internalPublish(mqttPubMsg);
         if (groupSubscriptions.matches(msg.topic)) {
@@ -316,6 +347,7 @@ public class DelaygroupingOrchestrator {
 
     private void sendMessageToLeader(PeerMessage msg) {
         if (state.equals(OrchestratorState.LEADER) && leader != null) {
+            LOG.info("Sending message {} to leader {}", msg, leader.getHostName());
             peerConnectionManager.getConnectionToPeer(leader).sendMessage(msg);
         } else {
             LOG.error("Error while trying to send message to leader! Leader not known or not in NON_LEADER state. Message: {}", msg);
@@ -323,6 +355,7 @@ public class DelaygroupingOrchestrator {
     }
 
     private void sendMessageToGroup(PeerMessage msg) {
+        LOG.info("Sending message {} to group: {}", msg.type, groupMembers);
         groupMembers.forEach(member -> {
             // Don't send to ourselves
             if (!member.equals(localInterfaceAddress)) {

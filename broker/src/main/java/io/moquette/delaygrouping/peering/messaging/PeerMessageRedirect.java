@@ -18,4 +18,12 @@ public class PeerMessageRedirect extends PeerMessage {
         message.target = target;
         return message;
     }
+
+    @Override
+    public String toString() {
+        return "PeerMessageRedirect{" +
+            "target=" + target +
+            ", type=" + type +
+            '}';
+    }
 }

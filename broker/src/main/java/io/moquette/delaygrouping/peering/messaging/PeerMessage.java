@@ -18,4 +18,10 @@ public class PeerMessage implements Serializable {
 
     }
 
+    @Override
+    public String toString() {
+        return "PeerMessage{" +
+            "type=" + type +
+            '}';
+    }
 }

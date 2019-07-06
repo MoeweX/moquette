@@ -15,6 +15,14 @@ public class PeerMessageSubscribe extends PeerMessage {
         return msg;
     }
 
+    @Override
+    public String toString() {
+        return "PeerMessageSubscribe{" +
+            "topicFilters=" + topicFilters +
+            ", type=" + type +
+            '}';
+    }
+
     public Collection<String> getTopicFilters() {
         return topicFilters;
     }

@@ -58,6 +58,19 @@ public class PeerMessageMembership extends PeerMessage {
         return msg;
     }
 
+    @Override
+    public String toString() {
+        return "PeerMessageMembership{" +
+            "signal=" + signal +
+            ", electionValue=" + electionValue +
+            ", shouldBeLeader=" + shouldBeLeader +
+            ", leavingPeer=" + leavingPeer +
+            ", leftPeers=" + leftPeers +
+            ", joinedPeers=" + joinedPeers +
+            ", type=" + type +
+            '}';
+    }
+
     public MembershipSignal getSignal() {
         return signal;
     }
