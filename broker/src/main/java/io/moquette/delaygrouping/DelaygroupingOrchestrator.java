@@ -37,7 +37,9 @@ public class DelaygroupingOrchestrator {
     private SubscriptionStore groupSubscriptions = new SubscriptionStore();
     private SubscriptionStore clientSubscriptions = new SubscriptionStore();
     private ScheduledExecutorService peerMessagingExecutor = Executors.newSingleThreadScheduledExecutor();
+    private ScheduledExecutorService mainLoopExecutor = Executors.newSingleThreadScheduledExecutor();
     private InetAddress joiningPeer;
+    private boolean running;
 
     public DelaygroupingOrchestrator(DelaygroupingConfiguration config, BiConsumer<MqttPublishMessage, String> internalPublishFunction) {
         this.internalPublishFunction = internalPublishFunction;
@@ -52,29 +54,37 @@ public class DelaygroupingOrchestrator {
 
         state = OrchestratorState.BOOTSTRAP;
 
-        // TODO How about a decent shutdown procedure?
-        while (true) {
-            switch (state) {
-                case BOOTSTRAP:
-                    doBootstrap();
-                    break;
-                case LEADER:
-                    doLeader();
-                    break;
-                case NON_LEADER:
-                    doNonLeader();
-                    break;
+        mainLoopExecutor.execute(() -> {
+            running = true;
+            // TODO How about a decent shutdown procedure?
+            while (running) {
+                switch (state) {
+                    case BOOTSTRAP:
+                        doBootstrap();
+                        break;
+                    case LEADER:
+                        doLeader();
+                        break;
+                    case NON_LEADER:
+                        doNonLeader();
+                        break;
+                }
+                // TODO Should we sleep?
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException ignored) {
+                }
             }
-            // TODO Should we sleep?
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException ignored) {
+            if (peerConnectionManager != null) {
+                peerConnectionManager.shutdown();
             }
-        }
-
-        // TODO Should we already accept client connections? We don't really have a choice, have we?
-
-        // TODO What if another node joins while two are already negotiating? --> Just deny (we might need a retry mechanism here)
+            if (connectionMonitor != null) {
+                connectionMonitor.shutdown();
+            }
+            if (anchorConnection != null) {
+                anchorConnection.shutdown();
+            }
+        });
 
     }
 
@@ -167,7 +177,8 @@ public class DelaygroupingOrchestrator {
                 LOG.info("Our leader exceed the latency threshold ({} > {})", leaderDelay, latencyThreshold);
                 transitionToLeader();
             }
-        } catch (InterruptedException | ExecutionException ignored) {}
+        } catch (InterruptedException | ExecutionException ignored) {
+        }
     }
 
     private void handleMembershipMessages(PeerMessageMembership msg, PeerConnection origin) {
@@ -257,7 +268,6 @@ public class DelaygroupingOrchestrator {
                 groupMembers.addAll(msg.getJoinedPeers());
                 LOG.info("Group members after GROUP_UPDATE: {}", groupMembers);
                 break;
-            // TODO Deny all group modifications while process is ongoing (we might indeed need an additional ack for that... and some automatic retrying)
         }
     }
 
@@ -366,6 +376,16 @@ public class DelaygroupingOrchestrator {
 
     private void internalPublish(MqttPublishMessage msg) {
         internalPublishFunction.accept(msg, clientId);
+    }
+
+    public void shutdown() {
+        running = false;
+        peerMessagingExecutor.shutdown();
+        try {
+            peerMessagingExecutor.awaitTermination(10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            peerMessagingExecutor.shutdownNow();
+        }
     }
 
     public Consumer<MqttPublishMessage> getInterceptHandler() {

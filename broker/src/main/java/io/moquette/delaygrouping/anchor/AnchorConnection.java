@@ -23,6 +23,7 @@ public class AnchorConnection {
     private boolean active;
     private ExpiringCache<InetAddress> leaderCache = new ExpiringCache<>(1000);
     private Consumer<Message> mqttCallback;
+    private MessageStore messageStore = new MessageStore();
 
     public AnchorConnection(InetSocketAddress anchorAddress, InetAddress localAddress) {
         this.localAddress = localAddress;
@@ -84,6 +85,7 @@ public class AnchorConnection {
         var topic = msg.variableHeader().topicName();
         var payload = new byte[msg.payload().readableBytes()];
         msg.payload().readBytes(payload);
+        messageStore.save(topic + new String(payload, StandardCharsets.UTF_8));
         mqttConnection.publish(new Message(topic, payload));
     }
 
@@ -107,7 +109,10 @@ public class AnchorConnection {
         if (Utils.mqttTopicMatchesSubscription(msg.topic, LEADER_ANNOUNCEMENT_TOPIC)) {
             handleLeaderReceive(msg);
         } else {
-            mqttCallback.accept(msg);
+            // Check that this we haven't send this message earlier (i.e. that the receive count is at one less than the sent count)
+            if (!messageStore.remove(msg.topic + new String(msg.payload, StandardCharsets.UTF_8))) {
+                mqttCallback.accept(msg);
+            }
         }
     }
 }

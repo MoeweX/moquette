@@ -221,7 +221,8 @@ public class Server {
     }
 
     public void stopServer() {
-        bridge.shutdown();
+        if (bridge != null) bridge.shutdown();
+        if (delaygroupingOrchestrator != null) delaygroupingOrchestrator.shutdown();
         LOG.info("Unbinding server from the configured ports");
         m_acceptor.close();
         LOG.trace("Stopping MQTT protocol processor");
