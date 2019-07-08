@@ -299,12 +299,16 @@ public class DelaygroupingOrchestrator {
         switch (msg.type) {
             case PUBLISH:
                 handlePublishMessages((PeerMessagePublish) msg, origin);
+                break;
             case REDIRECT:
                 peerMessagingExecutor.execute(() -> handleRedirectMessages((PeerMessageRedirect) msg, origin));
+                break;
             case SUBSCRIBE:
                 handleSubscribeMessages((PeerMessageSubscribe) msg, origin);
+                break;
             case MEMBERSHIP:
                 peerMessagingExecutor.execute(() -> handleMembershipMessages((PeerMessageMembership) msg, origin));
+                break;
         }
     }
 
