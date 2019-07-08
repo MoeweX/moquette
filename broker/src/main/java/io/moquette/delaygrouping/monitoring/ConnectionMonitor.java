@@ -132,7 +132,7 @@ public class ConnectionMonitor {
             collectResults(address);
             DescriptiveStatistics stats = monitoredPeers.get(address);
             if (stats != null) {
-                return (stats.getMean() / 2) / 1000;
+                return stats.getMean() / 2d;
             } else {
                 return null;
             }
