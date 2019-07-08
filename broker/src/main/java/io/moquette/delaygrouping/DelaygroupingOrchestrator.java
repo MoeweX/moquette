@@ -201,7 +201,8 @@ public class DelaygroupingOrchestrator {
                     if (state.equals(OrchestratorState.NON_LEADER)) {
                         doImmediately(this::transitionToLeader); // this should theoretically never be the case
                     }
-                    LOG.info("Got JOIN_ACK from {}. I should be leader!", origin.getRemoteAddress().getHostName());
+                    LOG.info("Got JOIN_ACK from {}. I should be leader! Adding peer to my group...", origin.getRemoteAddress().getHostName());
+                    groupMembers.add(origin.getRemoteAddress());
                     origin.sendMessage(PeerMessageMembership.joinAckAck(msg));
                 } else {
                     if (state.equals(OrchestratorState.LEADER)) {
@@ -256,7 +257,7 @@ public class DelaygroupingOrchestrator {
                     LOG.info("Got GROUP_UPDATE from {}. Updating group member info (I'm LEADER).", origin.getRemoteAddress().getHostName());
                 }
                 groupMembers.removeAll(msg.getLeftPeers());
-                groupMembers.addAll(msg.getJoinedPeers());
+                groupMembers.addAll(msg.getJoinedPeers()); // TODO Should we remove ourselves from the list? (always?)
                 LOG.info("Group members after GROUP_UPDATE: {}", groupMembers);
                 break;
         }
@@ -277,7 +278,7 @@ public class DelaygroupingOrchestrator {
     }
 
     private void handlePublishMessages(PeerMessagePublish msg, PeerConnection origin) {
-        LOG.debug("Got PUBLISH from {}: {}", origin.getRemoteAddress().getHostName(), msg.getPublishMessages());
+        LOG.info("Got PUBLISH from {}: {}", origin.getRemoteAddress().getHostName(), msg.getPublishMessages());
         msg.getPublishMessages().forEach(this::internalPublish);
         if (state.equals(OrchestratorState.LEADER)) {
             LOG.debug("Relaying PUBLISH to anchor");
@@ -322,6 +323,8 @@ public class DelaygroupingOrchestrator {
         LOG.info("Intercepted PUBLISH from clients: {}", interceptedMsg);
         if (state.equals(OrchestratorState.LEADER)) {
             anchorConnection.publish(interceptedMsg);
+        } else {
+            sendMessageToLeader(PeerMessagePublish.fromMessage(interceptedMsg));
         }
         if (groupSubscriptions.matches(interceptedMsg.variableHeader().topicName())) {
             sendMessageToGroup(PeerMessagePublish.fromMessage(interceptedMsg));
