@@ -35,11 +35,11 @@ public class DelaygroupingOrchestrator {
     private Set<InetAddress> groupMembers = ConcurrentHashMap.newKeySet();
     // TODO Check when to reset group / client subscriptions?!
     private SubscriptionStore groupSubscriptions = new SubscriptionStore();
-    private SubscriptionStore clientSubscriptions = new SubscriptionStore();
+    private SubscriptionStore clientSubscriptions = new SubscriptionStore(); // TODO We never unsubscribe...
     private ScheduledExecutorService peerMessagingExecutor = Executors.newSingleThreadScheduledExecutor();
     private ScheduledExecutorService mainLoopExecutor = Executors.newSingleThreadScheduledExecutor();
     private InetAddress joiningPeer;
-    private boolean running;
+    private int mainLoopInterval = 100;
 
     public DelaygroupingOrchestrator(DelaygroupingConfiguration config, BiConsumer<MqttPublishMessage, String> internalPublishFunction) {
         this.internalPublishFunction = internalPublishFunction;
@@ -54,42 +54,21 @@ public class DelaygroupingOrchestrator {
 
         state = OrchestratorState.BOOTSTRAP;
 
-        mainLoopExecutor.execute(() -> {
-            running = true;
-            // TODO How about a decent shutdown procedure?
-            while (running) {
-                switch (state) {
-                    case BOOTSTRAP:
-                        doBootstrap();
-                        break;
-                    case LEADER:
-                        doLeader();
-                        break;
-                    case NON_LEADER:
-                        doNonLeader();
-                        break;
-                }
-                // TODO Should we sleep?
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException ignored) {
-                }
-            }
-            if (peerConnectionManager != null) {
-                peerConnectionManager.shutdown();
-            }
-            if (connectionMonitor != null) {
-                connectionMonitor.shutdown();
-            }
-            if (anchorConnection != null) {
-                anchorConnection.shutdown();
-            }
-        });
+        // Let's get this party started!
+        doNext(this::transitionToLeader);
 
     }
 
-    private void doBootstrap() {
-        transitionToLeader();
+    private void doNext(Runnable runnable) {
+        doNext(runnable, 0);
+    }
+
+    private void doNext(Runnable runnable, int additionalDelay) {
+        mainLoopExecutor.schedule(runnable, mainLoopInterval + additionalDelay, TimeUnit.MILLISECONDS);
+    }
+
+    private void doImmediately(Runnable runnable) {
+        mainLoopExecutor.execute(runnable);
     }
 
     private void transitionToLeader() {
@@ -109,9 +88,11 @@ public class DelaygroupingOrchestrator {
         previousLeaders = new HashSet<>();
 
         state = OrchestratorState.LEADER;
+
+        doNext(this::leaderAction);
     }
 
-    private void doLeader() {
+    private void leaderAction() {
         // Check other leaders and update connection monitoring
         var currentLeaders = anchorConnection.getCollectedLeaders();
         previousLeaders.removeAll(currentLeaders);
@@ -133,16 +114,19 @@ public class DelaygroupingOrchestrator {
             }
         }
 
-        if (minimumDelayLeader != null) {
+        if (minimumDelayLeader != null && !isJoinOngoing()) {
             LOG.info("Found other leader {} with delay {}ms", minimumDelayLeader.getHostName(), minimumDelay);
             // if we have a candidate start negotiation (see handlers)
-            var newLeaderConnection = peerConnectionManager.getConnectionToPeer(minimumDelayLeader);
-            newLeaderConnection.sendMessage(PeerMessageMembership.join(leaderCapabilityMeasure));
+            peerConnectionManager.getConnectionToPeer(minimumDelayLeader)
+                .sendMessage(PeerMessageMembership.join(leaderCapabilityMeasure));
+            doNext(this::leaderAction, new Random().nextInt(1000));
+        } else {
+            doNext(this::leaderAction);
         }
     }
 
     private void transitionToNonLeader(InetAddress newLeader) {
-        LOG.info("{}: Switching to non-leader mode", clientId);
+        LOG.info("{}: Switching to non-leader mode and connecting to new leader {}", clientId, newLeader);
 
         // stop all leader-related functions
         connectionMonitor.removeAll();
@@ -159,6 +143,7 @@ public class DelaygroupingOrchestrator {
         // transmit state to new leader
         var subscriptions = new HashSet<>(groupSubscriptions.getFlattened());
         subscriptions.addAll(clientSubscriptions.getFlattened());
+        LOG.info("Sending group subscriptions to leader: {}", subscriptions);
         sendMessageToLeader(PeerMessageSubscribe.fromTopicFilter(subscriptions));
         sendMessageToLeader(PeerMessageMembership.groupUpdate(null, new ArrayList<>(groupMembers)));
 
@@ -166,28 +151,34 @@ public class DelaygroupingOrchestrator {
         sendMessageToGroup(PeerMessageRedirect.redirect(newLeader));
         groupMembers.clear();
         groupSubscriptions.clear();
+
+        doNext(this::nonLeaderAction);
     }
 
-    private void doNonLeader() {
+    private void nonLeaderAction() {
         // monitor latency to group leader and switch to leader (effectively leaving group)
         Double leaderDelay;
         try {
             leaderDelay = connectionMonitor.getAverageDelay(leader).get();
             if (leaderDelay > latencyThreshold) {
                 LOG.info("Our leader exceed the latency threshold ({} > {})", leaderDelay, latencyThreshold);
-                transitionToLeader();
+                doImmediately(this::transitionToLeader);
             }
         } catch (InterruptedException | ExecutionException ignored) {
         }
+
+        doNext(this::nonLeaderAction);
     }
 
     private void handleMembershipMessages(PeerMessageMembership msg, PeerConnection origin) {
+        // TODO This is a bit iffy because we may get duplicated messages from legitimately joining peer... ==> refactor this into a proper membership transaction tracking object
+        if (joiningPeer != null && joiningPeer != origin.getRemoteAddress()) {
+            LOG.info("Peer {} is already joining! Try later...", joiningPeer.getHostAddress());
+            origin.sendMessage(PeerMessageMembership.busy());
+            return;
+        }
         switch (msg.getSignal()) {
             case JOIN:
-                if (joiningPeer != null) {
-                    origin.sendMessage(PeerMessageMembership.busy());
-                    return;
-                }
                 // Only allow join if we are a leader
                 if (state.equals(OrchestratorState.LEADER)) {
                     if (leaderCapabilityMeasure >= msg.getElectionValue()) {
@@ -208,14 +199,14 @@ public class DelaygroupingOrchestrator {
                 // We are allowed to join!
                 if (msg.isShouldBeLeader()) {
                     if (state.equals(OrchestratorState.NON_LEADER)) {
-                        transitionToLeader(); // this should theoretically never be the case
+                        doImmediately(this::transitionToLeader); // this should theoretically never be the case
                     }
                     LOG.info("Got JOIN_ACK from {}. I should be leader!", origin.getRemoteAddress().getHostName());
                     origin.sendMessage(PeerMessageMembership.joinAckAck(msg));
                 } else {
                     if (state.equals(OrchestratorState.LEADER)) {
                         // we join the other group and should not be leader
-                        transitionToNonLeader(origin.getRemoteAddress()); // this should theoretically always be the case (except for after we've implemented full JOIN on migrate)
+                        doImmediately(() -> transitionToNonLeader(origin.getRemoteAddress())); // this should theoretically always be the case (except for after we've implemented full JOIN on migrate)
                     }
                     LOG.info("Got JOIN_ACK from {}. I've stepped down to NON_LEADER. She will take over.", origin.getRemoteAddress().getHostName());
                     origin.sendMessage(PeerMessageMembership.joinAckAck(msg));
@@ -230,7 +221,7 @@ public class DelaygroupingOrchestrator {
                         LOG.info("Group members after JOIN: {}", groupMembers);
                     } else {
                         LOG.info("Got JOIN_ACKACK from {}. She joins as leader and confirmed switching.", origin.getRemoteAddress().getHostName());
-                        transitionToNonLeader(origin.getRemoteAddress());
+                        doImmediately(() -> transitionToNonLeader(origin.getRemoteAddress()));
                     }
                     joiningPeer = null;
                 } else {
@@ -356,8 +347,8 @@ public class DelaygroupingOrchestrator {
     }
 
     private void sendMessageToLeader(PeerMessage msg) {
-        if (state.equals(OrchestratorState.LEADER) && leader != null) {
-            LOG.info("Sending message {} to leader {}", msg, leader.getHostName());
+        if (state.equals(OrchestratorState.NON_LEADER) && leader != null) {
+            LOG.info("Sending message {} to leader {}", msg.type, leader.getHostName());
             peerConnectionManager.getConnectionToPeer(leader).sendMessage(msg);
         } else {
             LOG.error("Error while trying to send message to leader! Leader not known or not in NON_LEADER state. Message: {}", msg);
@@ -379,13 +370,35 @@ public class DelaygroupingOrchestrator {
     }
 
     public void shutdown() {
-        running = false;
+        mainLoopExecutor.shutdown();
+        try {
+            mainLoopExecutor.awaitTermination(10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            mainLoopExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+
         peerMessagingExecutor.shutdown();
         try {
             peerMessagingExecutor.awaitTermination(10, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             peerMessagingExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
         }
+
+        if (peerConnectionManager != null) {
+            peerConnectionManager.shutdown();
+        }
+        if (connectionMonitor != null) {
+            connectionMonitor.shutdown();
+        }
+        if (anchorConnection != null) {
+            anchorConnection.shutdown();
+        }
+    }
+
+    private boolean isJoinOngoing() {
+        return joiningPeer != null;
     }
 
     public Consumer<MqttPublishMessage> getInterceptHandler() {
@@ -397,8 +410,8 @@ public class DelaygroupingOrchestrator {
     }
 
     private enum OrchestratorState {
-        BOOTSTRAP,
         LEADER,
         NON_LEADER,
+        BOOTSTRAP,
     }
 }

@@ -4,7 +4,9 @@ import io.moquette.delaygrouping.peering.messaging.PeeringDecoder;
 import io.moquette.delaygrouping.peering.messaging.PeeringEncoder;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.bootstrap.ServerBootstrap;
-import io.netty.channel.*;
+import io.netty.channel.ChannelInitializer;
+import io.netty.channel.ChannelOption;
+import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
@@ -12,8 +14,6 @@ import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.serialization.ClassResolvers;
 import io.netty.handler.codec.serialization.ObjectDecoder;
 import io.netty.handler.codec.serialization.ObjectEncoder;
-import io.netty.handler.logging.LogLevel;
-import io.netty.handler.logging.LoggingHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,6 +43,23 @@ public class PeerConnectionManager {
         initializeServerBootstrap();
 
         startListener(bindAddress);
+    }
+
+    private static ChannelInitializer<SocketChannel> createChannelInitializer(Consumer<SocketChannel> peeringHandlerAdder) {
+        return new ChannelInitializer<>() {
+
+            @Override
+            protected void initChannel(SocketChannel channel) {
+                var pipeline = channel.pipeline();
+                //pipeline.addLast("logging", new LoggingHandler(LogLevel.INFO));
+                pipeline.addLast("objectDecoder", new ObjectDecoder(ClassResolvers.cacheDisabled(null)));
+                pipeline.addLast("objectEncoder", new ObjectEncoder());
+                pipeline.addLast("bridgeDecoder", new PeeringDecoder());
+                pipeline.addLast("bridgeEncoder", new PeeringEncoder());
+
+                peeringHandlerAdder.accept(channel);
+            }
+        };
     }
 
     public PeerConnection getConnectionToPeer(InetAddress peerAddress) {
@@ -99,7 +116,7 @@ public class PeerConnectionManager {
             .childOption(ChannelOption.TCP_NODELAY, true)
             .childHandler(createChannelInitializer(channel -> {
                 var peerConnection = getOrCreateConnection(channel.remoteAddress().getAddress());
-                if (peerConnection.getChannelCount() == 0) notifyNewConnection(peerConnection);
+                if (peerConnection.getChannelCount() == 0) newConnectionHandler.accept(peerConnection);
                 peerConnection.addChannel(channel);
                 var peeringHandler = new PeeringHandler();
                 peeringHandler.setConnection(peerConnection);
@@ -107,42 +124,13 @@ public class PeerConnectionManager {
             }));
     }
 
-    private void notifyNewConnection(PeerConnection connection) {
-        // do this synchronous so that we can make sure that the handler doesn't miss any messages
-        newConnectionHandler.accept(connection);
-    }
-
     private PeerConnection getOrCreateConnection(InetAddress peerAddress) {
-        // TODO This looks fishy... we might wanna synchronize write access to the map
-        var existingConnection = connections.get(peerAddress);
-        if (existingConnection == null) {
-            var newConnection = new PeerConnection(bootstrap, new InetSocketAddress(peerAddress, bindAndConnectPort));
-            existingConnection = connections.putIfAbsent(peerAddress, newConnection);
+        return connections.compute(peerAddress, (key, existingConnection) -> {
             if (existingConnection == null) {
-                return newConnection;
+                return new PeerConnection(bootstrap, new InetSocketAddress(peerAddress, bindAndConnectPort), newConnectionHandler);
             } else {
                 return existingConnection;
             }
-        } else {
-            return existingConnection;
-        }
-    }
-
-    private static ChannelInitializer<SocketChannel> createChannelInitializer(Consumer<SocketChannel> peeringHandlerAdder) {
-        return new ChannelInitializer<>() {
-
-            @Override
-            protected void initChannel(SocketChannel channel) {
-                var pipeline = channel.pipeline();
-                pipeline.addLast("logging", new LoggingHandler(LogLevel.INFO));
-                pipeline.addLast("objectDecoder", new ObjectDecoder(ClassResolvers.cacheDisabled(null)));
-                pipeline.addLast("objectEncoder", new ObjectEncoder());
-                pipeline.addLast("bridgeDecoder", new PeeringDecoder());
-                pipeline.addLast("bridgeEncoder", new PeeringEncoder());
-
-                peeringHandlerAdder.accept(channel);
-
-            }
-        };
+        });
     }
 }

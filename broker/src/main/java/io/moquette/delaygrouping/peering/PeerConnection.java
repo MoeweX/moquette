@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 public class PeerConnection {
     private static final Logger LOG = LoggerFactory.getLogger(PeerConnection.class);
@@ -29,10 +30,11 @@ public class PeerConnection {
     private LinkedBlockingDeque<PeerMessage> sendQueue = new LinkedBlockingDeque<>();
     private ExecutorService executor = Executors.newCachedThreadPool();
     private boolean running = false;
+    private Consumer<PeerConnection> newConnectionHandler;
 
     // TODO Auto reconnect?
 
-    PeerConnection(Bootstrap bootstrap) {
+    private PeerConnection(Bootstrap bootstrap) {
         this.bootstrap = bootstrap;
 
         // Initialize handlers by type
@@ -58,9 +60,10 @@ public class PeerConnection {
         });
     }
 
-    PeerConnection(Bootstrap bootstrap, InetSocketAddress remoteAddress) {
+    PeerConnection(Bootstrap bootstrap, InetSocketAddress remoteAddress, Consumer<PeerConnection> newConnectionHandler) {
         this(bootstrap);
         this.remoteAddress = remoteAddress;
+        this.newConnectionHandler = newConnectionHandler;
     }
 
     private Future connect() {
@@ -68,9 +71,10 @@ public class PeerConnection {
         if (channels.isEmpty()) {
             bootstrap.connect(remoteAddress).addListener((ChannelFuture channelFuture) -> {
                 if (channelFuture.isSuccess()) {
-                    channels.add(channelFuture.channel());
                     var peeringHandler = channelFuture.channel().pipeline().get(PeeringHandler.class);
                     peeringHandler.setConnection(this);
+                    if (channels.size() == 0) newConnectionHandler.accept(this);
+                    channels.add(channelFuture.channel());
                     future.complete(null);
                 } else {
                     LOG.error("Could not establish connection to {}: {}", remoteAddress, channelFuture.cause());
@@ -108,11 +112,13 @@ public class PeerConnection {
     }
 
     void handleMessage(PeerMessage msg) {
+        //LOG.info("Received peer message from {}: {}", remoteAddress.getHostString(), msg);
         handlersByType.get(msg.type)
             .forEach(consumer -> consumer.accept(msg, this));
     }
 
     public void sendMessage(PeerMessage msg) {
+        LOG.info("Sending peer message to {}: {}", remoteAddress.getHostString(), msg);
         msg.retain();
         sendQueue.add(msg);
     }
@@ -126,6 +132,7 @@ public class PeerConnection {
         for (PeerMessageType type : messageTypes) {
             handlersByType.get(type).add(handler);
         }
+        LOG.debug("Successfully registered message handlers for connection to {}", remoteAddress.getHostString());
         return handlerId;
     }
 

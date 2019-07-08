@@ -60,15 +60,39 @@ public class PeerMessageMembership extends PeerMessage {
 
     @Override
     public String toString() {
-        return "PeerMessageMembership{" +
-            "signal=" + signal +
-            ", electionValue=" + electionValue +
-            ", shouldBeLeader=" + shouldBeLeader +
-            ", leavingPeer=" + leavingPeer +
-            ", leftPeers=" + leftPeers +
-            ", joinedPeers=" + joinedPeers +
-            ", type=" + type +
-            '}';
+        switch (signal) {
+            case JOIN:
+                return "PeerMessageMembership{" +
+                    "signal=" + signal +
+                    ", electionValue=" + electionValue +
+                    '}';
+            case JOIN_ACK:
+                return "PeerMessageMembership{" +
+                    "signal=" + signal +
+                    ", shouldBeLeader=" + shouldBeLeader +
+                    '}';
+            case JOIN_ACKACK:
+                return "PeerMessageMembership{" +
+                    "signal=" + signal +
+                    ", shouldBeLeader=" + shouldBeLeader +
+                    '}';
+            case GROUP_UPDATE:
+                return "PeerMessageMembership{" +
+                    "signal=" + signal +
+                    ", leftPeers=" + leftPeers +
+                    ", joinedPeers=" + joinedPeers +
+                    '}';
+            case LEAVE:
+                return "PeerMessageMembership{" +
+                    "signal=" + signal +
+                    ", leavingPeer=" + leavingPeer +
+                    '}';
+            default:
+                return "PeerMessageMembership{" +
+                    "signal=" + signal +
+                    '}';
+        }
+
     }
 
     public MembershipSignal getSignal() {
