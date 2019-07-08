@@ -35,6 +35,7 @@ public class ConnectionMonitor {
      * @param windowSize Window size for averaging.
      */
     public ConnectionMonitor(int interval, int windowSize) {
+        if (interval < 200) throw new IllegalArgumentException("Interval must be >= 200ms!");
         this.interval = interval;
         this.windowSize = windowSize;
 
@@ -57,13 +58,13 @@ public class ConnectionMonitor {
             while (pingStdOut.available() > 0) {
                 character = (char) pingStdOut.read();
                 if (character == 10) {
-                    pingStdOut.mark(100);
+                    pingStdOut.mark(1000);
                 }
                 accumulator.append(character);
             }
             pingStdOut.reset();
         } catch (IOException ex) {
-            LOG.error("IOException while reading stdOut: {}", ex);
+            LOG.error("IOException while reading stdOut:", ex);
         }
 
         List<String> outputLines = Arrays.asList(accumulator.toString().split("\n"));
@@ -117,7 +118,7 @@ public class ConnectionMonitor {
     }
 
     private Process createProcess(InetAddress address) {
-        processBuilder.command("ping", "-n", "-i", String.valueOf(interval / 1000), address.getHostName());
+        processBuilder.command("ping", "-n", "-i", String.valueOf(interval / 1000), address.getHostAddress());
         try {
             return processBuilder.start();
         } catch (IOException e) {

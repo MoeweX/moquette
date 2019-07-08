@@ -47,7 +47,7 @@ public class DelaygroupingOrchestrator {
         latencyThreshold = config.getLatencyThreshold();
         this.localInterfaceAddress = config.getHost();
         clientId = localInterfaceAddress.getHostAddress();
-        this.connectionMonitor = new ConnectionMonitor(1, 20);
+        this.connectionMonitor = new ConnectionMonitor(1000, 20);
         peerConnectionManager = new PeerConnectionManager(localInterfaceAddress, this::handleNewPeerConnection);
         leader = null;
         joiningPeer = null;

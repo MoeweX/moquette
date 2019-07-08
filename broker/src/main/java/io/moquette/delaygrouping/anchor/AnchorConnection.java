@@ -109,7 +109,8 @@ public class AnchorConnection {
         if (Utils.mqttTopicMatchesSubscription(msg.topic, LEADER_ANNOUNCEMENT_TOPIC)) {
             handleLeaderReceive(msg);
         } else {
-            // Check that this we haven't send this message earlier (i.e. that the receive count is at one less than the sent count)
+            // Check that we haven't send this message earlier (i.e. that the receive count is at one less than the sent count)
+            // TODO This is a possible bug: If we have not subscribed to a topic we're publishing on, we may falsely discard messages --> better only do this check if we have a subscription for this topic
             if (!messageStore.remove(msg.topic + new String(msg.payload, StandardCharsets.UTF_8))) {
                 mqttCallback.accept(msg);
             }
