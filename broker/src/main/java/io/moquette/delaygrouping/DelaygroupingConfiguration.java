@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
+import java.util.Random;
 
 public class DelaygroupingConfiguration {
 
@@ -17,6 +18,7 @@ public class DelaygroupingConfiguration {
     private InetSocketAddress anchorNodeAddress;
     private int latencyThreshold;
     private boolean valid;
+    private int leadershipCapabilityMeasure;
 
     public DelaygroupingConfiguration(IConfig config) {
         valid = true;
@@ -32,6 +34,8 @@ public class DelaygroupingConfiguration {
         port = config.intProp("delaygrouping_peering_port", 1884);
 
         latencyThreshold = config.intProp("delaygrouping_threshold", 5);
+
+        leadershipCapabilityMeasure = config.intProp("delaygrouping_leadership_capability_measure", new Random().nextInt());
 
         var anchorNodeAddressValue = config.getProperty("delaygrouping_anchor_node_address");
         if (anchorNodeAddressValue != null) {
@@ -60,5 +64,9 @@ public class DelaygroupingConfiguration {
 
     public int getLatencyThreshold() {
         return latencyThreshold;
+    }
+
+    public int getLeadershipCapabilityMeasure() {
+        return leadershipCapabilityMeasure;
     }
 }

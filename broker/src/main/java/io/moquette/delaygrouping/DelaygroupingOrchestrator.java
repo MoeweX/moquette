@@ -31,7 +31,7 @@ public class DelaygroupingOrchestrator {
     private Set<InetAddress> previousLeaders;
     private InetAddress leader;
     private PeerConnectionManager peerConnectionManager;
-    private int leaderCapabilityMeasure = new Random().nextInt(); // TODO Add this to config?
+    private int leadershipCapabilityMeasure;
     private Set<InetAddress> groupMembers = ConcurrentHashMap.newKeySet();
     // TODO Check when to reset group / client subscriptions?!
     private SubscriptionStore groupSubscriptions = new SubscriptionStore();
@@ -43,6 +43,7 @@ public class DelaygroupingOrchestrator {
 
     public DelaygroupingOrchestrator(DelaygroupingConfiguration config, BiConsumer<MqttPublishMessage, String> internalPublishFunction) {
         this.internalPublishFunction = internalPublishFunction;
+        this.leadershipCapabilityMeasure = config.getLeadershipCapabilityMeasure();
         cloudAnchor = config.getAnchorNodeAddress();
         latencyThreshold = config.getLatencyThreshold();
         this.localInterfaceAddress = config.getHost();
@@ -118,7 +119,7 @@ public class DelaygroupingOrchestrator {
             LOG.info("Found other leader {} with delay {}ms", minimumDelayLeader.getHostName(), minimumDelay);
             // if we have a candidate start negotiation (see handlers)
             peerConnectionManager.getConnectionToPeer(minimumDelayLeader)
-                .sendMessage(PeerMessageMembership.join(leaderCapabilityMeasure));
+                .sendMessage(PeerMessageMembership.join(leadershipCapabilityMeasure));
             doNext(this::leaderAction, new Random().nextInt(1000));
         } else {
             doNext(this::leaderAction);
@@ -181,7 +182,7 @@ public class DelaygroupingOrchestrator {
             case JOIN:
                 // Only allow join if we are a leader
                 if (state.equals(OrchestratorState.LEADER)) {
-                    if (leaderCapabilityMeasure >= msg.getElectionValue()) {
+                    if (leadershipCapabilityMeasure >= msg.getElectionValue()) {
                         LOG.info("Got JOIN request. New peer {} will join my group as member.", origin.getRemoteAddress().getHostName());
                         origin.sendMessage(PeerMessageMembership.joinAck(false));
                         origin.sendMessage(PeerMessageMembership.groupUpdate(new ArrayList<>(groupMembers), null));
@@ -233,7 +234,7 @@ public class DelaygroupingOrchestrator {
             case BUSY:
                 LOG.info("Got BUSY from {}. Scheduling to retry JOIN after random time.", origin.getRemoteAddress().getHostName());
                 peerMessagingExecutor.schedule(
-                    () -> origin.sendMessage(PeerMessageMembership.join(leaderCapabilityMeasure)),
+                    () -> origin.sendMessage(PeerMessageMembership.join(leadershipCapabilityMeasure)),
                     new Random().nextInt(1000), TimeUnit.MILLISECONDS);
                 break;
             case DENY:

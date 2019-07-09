@@ -64,7 +64,7 @@ public class ConnectionMonitor {
             }
             pingStdOut.reset();
         } catch (IOException ex) {
-            LOG.error("IOException while reading stdOut:", ex);
+            LOG.error("IOException while reading stdOut! Accumulator content: {}", accumulator.toString(), ex);
         }
 
         List<String> outputLines = Arrays.asList(accumulator.toString().split("\n"));

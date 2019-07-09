@@ -19,7 +19,7 @@ public class DelaygroupingOrchestratorTest {
     private List<MqttClient> testClients = new ArrayList<>();
     private Map<MqttClient, MessageCollector> msgCollectors = new HashMap<>();
 
-    private Server runTestInstance(String host) {
+    private Server runTestInstance(String host, int leadershipCapabilityMeasure) {
         try {
             Server testInstance = new Server();
             final Properties configProps = new Properties();
@@ -28,6 +28,7 @@ public class DelaygroupingOrchestratorTest {
             configProps.setProperty("delaygrouping_peering_host", host);
             configProps.setProperty("delaygrouping_peering_port", "1884");
             configProps.setProperty("delaygrouping_threshold", "5");
+            configProps.setProperty("delaygrouping_leadership_capability_measure", String.valueOf(leadershipCapabilityMeasure));
             configProps.setProperty("delaygrouping_anchor_node_address", "127.0.0.5:1883");
 
             IConfig config = new MemoryConfig(configProps);
@@ -64,7 +65,7 @@ public class DelaygroupingOrchestratorTest {
 
     @Test
     public void testInstance1() throws InterruptedException {
-        var instance = runTestInstance("127.0.0.1");
+        var instance = runTestInstance("127.0.0.1", 10);
 
         while (true) {
             Thread.sleep(1000);
@@ -73,7 +74,7 @@ public class DelaygroupingOrchestratorTest {
 
     @Test
     public void testInstance2() throws InterruptedException {
-        var instance = runTestInstance("127.0.0.2");
+        var instance = runTestInstance("127.0.0.2", 20);
 
         while (true) {
             Thread.sleep(1000);
@@ -82,7 +83,16 @@ public class DelaygroupingOrchestratorTest {
 
     @Test
     public void testInstance3() throws InterruptedException {
-        var instance = runTestInstance("127.0.0.3");
+        var instance = runTestInstance("127.0.0.3", 30);
+
+        while (true) {
+            Thread.sleep(1000);
+        }
+    }
+
+    @Test
+    public void testInstance4() throws InterruptedException {
+        var instance = runTestInstance("127.0.0.4", 40);
 
         while (true) {
             Thread.sleep(1000);
