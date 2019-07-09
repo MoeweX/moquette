@@ -4,6 +4,7 @@ import io.moquette.delaygrouping.peering.messaging.PeerMessage;
 import io.moquette.delaygrouping.peering.messaging.PeerMessageType;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelException;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOutboundInvoker;
 import org.slf4j.Logger;
@@ -47,9 +48,16 @@ public class PeerConnection {
                     connect().get();
                     writeAndFlush(msg).get();
                 } catch (ExecutionException e) {
-                    // The sending process hasn't worked, so put the message back into the queue
+                    // The sending process hasn't worked, so put the message back into the queue and wait for a bit
                     sendQueue.addFirst(msg);
-                } catch (InterruptedException ignored) {
+                    LOG.error("Got exception while trying to send peer message: {}", e.getCause());
+                    try {
+                        Thread.sleep(100);
+                    } catch (InterruptedException e1) {
+                        e1.printStackTrace();
+                    }
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
                 }
             }
         });
@@ -83,13 +91,21 @@ public class PeerConnection {
     }
 
     private Future writeAndFlush(PeerMessage msg) {
+        // Always use the first channel first and check if its already active
+        var channel = channels.get(0);
+        if (!channel.isActive()) {
+            channels.remove(channel);
+            LOG.error("Error on send! Channel to {} was closed!", channel.remoteAddress());
+            return CompletableFuture.failedFuture(new ChannelException());
+        }
+
         var future = new CompletableFuture<>();
 
-        // Always use the first channel, as it should always be there and shouldn't make a difference anyway
-        channels.get(0).writeAndFlush(msg).addListener((ChannelFuture channelFuture) -> {
+        channel.writeAndFlush(msg).addListener((ChannelFuture channelFuture) -> {
             if (channelFuture.isSuccess()) {
                 future.complete(null);
             } else {
+                channels.remove(channelFuture.channel());
                 LOG.error("Failed writing into channel to {}", channelFuture.channel().remoteAddress().toString(), channelFuture.cause());
                 future.completeExceptionally(channelFuture.cause());
             }

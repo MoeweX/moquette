@@ -78,6 +78,7 @@ public class DelaygroupingOrchestrator {
         if (leader != null) {
             LOG.info("Leaving existing group with leader {}", leader.getHostName());
             sendMessageToLeader(PeerMessageMembership.leave(localInterfaceAddress));
+            groupMembers.clear();
         }
         leader = null;
 
@@ -104,14 +105,15 @@ public class DelaygroupingOrchestrator {
         // Check if there are leaders below the set threshold
         var minimumDelay = Double.MAX_VALUE;
         InetAddress minimumDelayLeader = null;
-        for (InetAddress leader : currentLeaders) {
+        for (InetAddress otherLeader : currentLeaders) {
             try {
-                var averageDelay = connectionMonitor.getAverageDelay(leader).get();
+                var averageDelay = connectionMonitor.getAverageDelay(otherLeader).get();
                 if (averageDelay < latencyThreshold && averageDelay < minimumDelay) {
                     minimumDelay = averageDelay;
-                    minimumDelayLeader = leader;
+                    minimumDelayLeader = otherLeader;
                 }
-            } catch (InterruptedException | ExecutionException ignored) {
+            } catch (InterruptedException | ExecutionException e) {
+                LOG.error("Got exception while getting conn stats: {}", e.getCause());
             }
         }
 
@@ -233,10 +235,7 @@ public class DelaygroupingOrchestrator {
                 // ignore JOIN_ACKACK if we're not leader
                 break;
             case BUSY:
-                LOG.info("Got BUSY from {}. Scheduling to retry JOIN after random time.", origin.getRemoteAddress().getHostName());
-                peerMessagingExecutor.schedule(
-                    () -> origin.sendMessage(PeerMessageMembership.join(leadershipCapabilityMeasure)),
-                    new Random().nextInt(1000), TimeUnit.MILLISECONDS);
+                LOG.info("Got BUSY from {}.", origin.getRemoteAddress().getHostName());
                 break;
             case DENY:
                 LOG.info("Got DENY from {}.", origin.getRemoteAddress().getHostName());
