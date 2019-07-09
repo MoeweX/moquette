@@ -161,8 +161,9 @@ public class DelaygroupingOrchestrator {
         Double leaderDelay;
         try {
             leaderDelay = connectionMonitor.getAverageDelay(leader).get();
+            LOG.info("Leader delay: {}ms", leaderDelay);
             if (leaderDelay > latencyThreshold) {
-                LOG.info("Our leader exceed the latency threshold ({} > {})", leaderDelay, latencyThreshold);
+                LOG.info("Our leader exceed the latency threshold ({}ms > {}ms)", leaderDelay, latencyThreshold);
                 doImmediately(this::transitionToLeader);
             }
         } catch (InterruptedException | ExecutionException ignored) {

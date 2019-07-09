@@ -46,23 +46,24 @@ public class ConnectionMonitor {
 
     private void collectResults(InetAddress address) {
         // only call from executor!
-        // read and parse results from all running instances
         Process instance = runningInstances.get(address);
         if (instance == null) return;
 
         InputStream pingStdOut = instance.getInputStream();
         StringBuilder accumulator = new StringBuilder();
         char character;
+        var marked = false;
 
         try {
             while (pingStdOut.available() > 0) {
                 character = (char) pingStdOut.read();
                 if (character == 10) {
                     pingStdOut.mark(1000);
+                    marked = true;
                 }
                 accumulator.append(character);
             }
-            pingStdOut.reset();
+            if (marked) pingStdOut.reset();
         } catch (IOException ex) {
             LOG.error("IOException while reading stdOut! Accumulator content: {}", accumulator.toString(), ex);
         }
@@ -113,6 +114,7 @@ public class ConnectionMonitor {
     public void removeAll() {
         monitoredPeers.clear();
         runningInstances.forEach((address, process) -> process.destroy());
+        runningInstances.clear();
 
         LOG.info("STOPPED monitoring ALL peers");
     }
