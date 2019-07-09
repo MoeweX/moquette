@@ -2,7 +2,7 @@ package io.moquette.delaygrouping.peering.messaging;
 
 import java.net.InetAddress;
 import java.util.ArrayList;
-import java.util.List;
+import java.util.Collection;
 import java.util.Objects;
 
 public class PeerMessageMembership extends PeerMessage {
@@ -10,8 +10,9 @@ public class PeerMessageMembership extends PeerMessage {
     private int electionValue;
     private boolean shouldBeLeader;
     private InetAddress leavingPeer;
-    private List<InetAddress> leftPeers;
-    private List<InetAddress> joinedPeers;
+    private Collection<InetAddress> addedPeers;
+    private Collection<InetAddress> removedPeers;
+    private Collection<InetAddress> groupMembers;
 
     private PeerMessageMembership(MembershipSignal signal) {
         super(PeerMessageType.MEMBERSHIP);
@@ -51,10 +52,16 @@ public class PeerMessageMembership extends PeerMessage {
         return msg;
     }
 
-    public static PeerMessageMembership groupUpdate(List<InetAddress> leftPeers, List<InetAddress> joinedPeers) {
+    public static PeerMessageMembership groupUpdate(Collection<InetAddress> addedPeers, Collection<InetAddress> removedPeers) {
         var msg = new PeerMessageMembership(MembershipSignal.GROUP_UPDATE);
-        msg.leftPeers = Objects.requireNonNullElseGet(leftPeers, ArrayList::new);
-        msg.joinedPeers = Objects.requireNonNullElseGet(joinedPeers, ArrayList::new);
+        msg.addedPeers = Objects.requireNonNullElseGet(addedPeers, ArrayList::new);
+        msg.removedPeers = Objects.requireNonNullElseGet(removedPeers, ArrayList::new);
+        return msg;
+    }
+
+    public static PeerMessageMembership groupSet(Collection<InetAddress> groupMembers) {
+        var msg = new PeerMessageMembership(MembershipSignal.GROUP_SET);
+        msg.groupMembers = groupMembers;
         return msg;
     }
 
@@ -79,8 +86,13 @@ public class PeerMessageMembership extends PeerMessage {
             case GROUP_UPDATE:
                 return "PeerMessageMembership{" +
                     "signal=" + signal +
-                    ", leftPeers=" + leftPeers +
-                    ", joinedPeers=" + joinedPeers +
+                    ", addedPeers=" + addedPeers +
+                    ", removedPeers=" + removedPeers +
+                    '}';
+            case GROUP_SET:
+                return "PeerMessageMembership{" +
+                    "signal=" + signal +
+                    ", groupMembers=" + groupMembers +
                     '}';
             case LEAVE:
                 return "PeerMessageMembership{" +
@@ -111,12 +123,16 @@ public class PeerMessageMembership extends PeerMessage {
         return leavingPeer;
     }
 
-    public List<InetAddress> getLeftPeers() {
-        return leftPeers;
+    public Collection<InetAddress> getAddedPeers() {
+        return addedPeers;
     }
 
-    public List<InetAddress> getJoinedPeers() {
-        return joinedPeers;
+    public Collection<InetAddress> getRemovedPeers() {
+        return removedPeers;
+    }
+
+    public Collection<InetAddress> getGroupMembers() {
+        return groupMembers;
     }
 
     public enum MembershipSignal {
@@ -127,5 +143,6 @@ public class PeerMessageMembership extends PeerMessage {
         BUSY,
         LEAVE,
         GROUP_UPDATE,
+        GROUP_SET,
     }
 }

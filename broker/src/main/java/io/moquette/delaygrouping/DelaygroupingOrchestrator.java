@@ -145,7 +145,7 @@ public class DelaygroupingOrchestrator {
         subscriptions.addAll(clientSubscriptions.getFlattened());
         LOG.info("Sending group subscriptions to leader: {}", subscriptions);
         sendMessageToLeader(PeerMessageSubscribe.fromTopicFilter(subscriptions));
-        sendMessageToLeader(PeerMessageMembership.groupUpdate(null, new ArrayList<>(groupMembers)));
+        sendMessageToLeader(PeerMessageMembership.groupUpdate(new ArrayList<>(groupMembers), null));
 
         // point group members to new leader
         sendMessageToGroup(PeerMessageRedirect.redirect(newLeader));
@@ -184,7 +184,7 @@ public class DelaygroupingOrchestrator {
                     if (leaderCapabilityMeasure >= msg.getElectionValue()) {
                         LOG.info("Got JOIN request. New peer {} will join my group as member.", origin.getRemoteAddress().getHostName());
                         origin.sendMessage(PeerMessageMembership.joinAck(false));
-                        origin.sendMessage(PeerMessageMembership.groupUpdate(null, new ArrayList<>(groupMembers)));
+                        origin.sendMessage(PeerMessageMembership.groupUpdate(new ArrayList<>(groupMembers), null));
                     } else {
                         LOG.info("Got JOIN request. New peer {} will be the leader.", origin.getRemoteAddress().getHostName());
                         origin.sendMessage(PeerMessageMembership.joinAck(true));
@@ -217,7 +217,7 @@ public class DelaygroupingOrchestrator {
                 if (state.equals(OrchestratorState.LEADER)) {
                     if (msg.isShouldBeLeader()) {
                         LOG.info("Got JOIN_ACKACK from {}. She joins as group member, so just add her.", origin.getRemoteAddress().getHostName());
-                        sendMessageToGroup(PeerMessageMembership.groupUpdate(null, Arrays.asList(origin.getRemoteAddress())));
+                        sendMessageToGroup(PeerMessageMembership.groupUpdate(Arrays.asList(origin.getRemoteAddress()), null));
                         groupMembers.add(origin.getRemoteAddress());
                         LOG.info("Group members after JOIN: {}", groupMembers);
                     } else {
@@ -244,21 +244,25 @@ public class DelaygroupingOrchestrator {
                     LOG.info("Got LEAVE from {}. Removing her from group.", origin.getRemoteAddress().getHostName());
                     peerConnectionManager.closeConnectionToPeer(msg.getLeavingPeer());
                     groupMembers.remove(msg.getLeavingPeer());
-                    sendMessageToGroup(PeerMessageMembership.groupUpdate(Arrays.asList(msg.getLeavingPeer()), null));
+                    sendMessageToGroup(PeerMessageMembership.groupUpdate(null, Arrays.asList(msg.getLeavingPeer())));
                     LOG.info("Group members after LEAVE: {}", groupMembers);
                 } else {
                     LOG.warn("Got LEAVE from {}. Ignoring it, because I'm NOT LEADER!", origin.getRemoteAddress().getHostName());
                 }
                 break;
             case GROUP_UPDATE:
-                if (state.equals(OrchestratorState.NON_LEADER)) {
-                    LOG.info("Got GROUP_UPDATE from {}. Updating group member info (I'm NON_LEADER).", origin.getRemoteAddress().getHostName());
-                } else if (state.equals(OrchestratorState.LEADER)) {
-                    LOG.info("Got GROUP_UPDATE from {}. Updating group member info (I'm LEADER).", origin.getRemoteAddress().getHostName());
+                groupMembers.removeAll(msg.getRemovedPeers());
+                groupMembers.addAll(msg.getAddedPeers());
+                LOG.info("Got GROUP_UPDATE from {} (I'm {}). Updated group: {}", origin.getRemoteAddress().getHostName(), state.name(), groupMembers);
+
+                if (state.equals(OrchestratorState.LEADER)) {
+                    sendMessageToGroup(PeerMessageMembership.groupSet(groupMembers));
                 }
-                groupMembers.removeAll(msg.getLeftPeers());
-                groupMembers.addAll(msg.getJoinedPeers()); // TODO Should we remove ourselves from the list? (always?)
-                LOG.info("Group members after GROUP_UPDATE: {}", groupMembers);
+                break;
+            case GROUP_SET:
+                groupMembers.addAll(msg.getGroupMembers());
+                groupMembers.retainAll(msg.getGroupMembers());
+                LOG.info("Got GROUP_SET from {}. Updated group members: {}", origin.getRemoteAddress().getHostName(), groupMembers);
                 break;
         }
     }
@@ -287,6 +291,7 @@ public class DelaygroupingOrchestrator {
     }
 
     private void handleSubscribeMessages(PeerMessageSubscribe msg, PeerConnection origin) {
+        LOG.info("Got SUBSCRIBE from {}: {}", origin.getRemoteAddress().getHostName(), msg.getTopicFilters());
         msg.getTopicFilters().forEach(topicFilter ->
             groupSubscriptions.addSubscription(origin.getRemoteAddress().getHostAddress(), topicFilter));
 
@@ -351,6 +356,17 @@ public class DelaygroupingOrchestrator {
         if (groupSubscriptions.matches(msg.topic)) {
             sendMessageToGroup(PeerMessagePublish.fromMessage(mqttPubMsg));
         }
+    }
+
+
+    /**
+     * Makes sure groupMembers contains exactly the Elements from the given collection.
+     *
+     * @param groupMembers New set of group members to retain.
+     */
+    private void updateGroup(Collection<InetAddress> groupMembers) {
+        this.groupMembers.addAll(groupMembers);
+        this.groupMembers.retainAll(groupMembers);
     }
 
     private void sendMessageToLeader(PeerMessage msg) {

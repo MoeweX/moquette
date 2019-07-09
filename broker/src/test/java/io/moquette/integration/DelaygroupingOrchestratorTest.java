@@ -64,7 +64,7 @@ public class DelaygroupingOrchestratorTest {
 
     @Test
     public void testInstance1() throws InterruptedException {
-        var instance1 = runTestInstance("127.0.0.1");
+        var instance = runTestInstance("127.0.0.1");
 
         while (true) {
             Thread.sleep(1000);
@@ -73,7 +73,16 @@ public class DelaygroupingOrchestratorTest {
 
     @Test
     public void testInstance2() throws InterruptedException {
-        var instance1 = runTestInstance("127.0.0.2");
+        var instance = runTestInstance("127.0.0.2");
+
+        while (true) {
+            Thread.sleep(1000);
+        }
+    }
+
+    @Test
+    public void testInstance3() throws InterruptedException {
+        var instance = runTestInstance("127.0.0.3");
 
         while (true) {
             Thread.sleep(1000);
