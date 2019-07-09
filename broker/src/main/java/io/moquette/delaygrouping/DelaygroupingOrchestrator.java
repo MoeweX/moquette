@@ -217,11 +217,11 @@ public class DelaygroupingOrchestrator {
                 if (state.equals(OrchestratorState.LEADER)) {
                     if (msg.isShouldBeLeader()) {
                         LOG.info("Got JOIN_ACKACK from {}. She joins as group member, so just add her.", origin.getRemoteAddress().getHostName());
-                        sendMessageToGroup(PeerMessageMembership.groupUpdate(Arrays.asList(origin.getRemoteAddress()), null));
                         groupMembers.add(origin.getRemoteAddress());
+                        sendMessageToGroup(PeerMessageMembership.groupSet(groupMembers));
                         LOG.info("Group members after JOIN: {}", groupMembers);
                     } else {
-                        LOG.info("Got JOIN_ACKACK from {}. She joins as leader and confirmed switching.", origin.getRemoteAddress().getHostName());
+                        LOG.info("Got JOIN_ACKACK from {}. She joins as leader and confirmed switching / being ready.", origin.getRemoteAddress().getHostName());
                         doImmediately(() -> transitionToNonLeader(origin.getRemoteAddress()));
                     }
                     joiningPeer = null;
@@ -326,26 +326,28 @@ public class DelaygroupingOrchestrator {
 
     private void handleInterceptedPublish(MqttPublishMessage interceptedMsg) {
         LOG.info("Intercepted PUBLISH from clients: {}", interceptedMsg);
+        var peerPubMsg = PeerMessagePublish.fromMessage(interceptedMsg);
         if (state.equals(OrchestratorState.LEADER)) {
             anchorConnection.publish(interceptedMsg);
         } else {
-            sendMessageToLeader(PeerMessagePublish.fromMessage(interceptedMsg));
+            sendMessageToLeader(peerPubMsg);
         }
         if (groupSubscriptions.matches(interceptedMsg.variableHeader().topicName())) {
-            sendMessageToGroup(PeerMessagePublish.fromMessage(interceptedMsg));
+            sendMessageToGroup(peerPubMsg);
         }
     }
 
     private void handleInterceptedSubscribe(String topicFilter) {
-        LOG.info("Intercepted SUBSCRIBE from clients: ", topicFilter);
+        LOG.info("Intercepted SUBSCRIBE from clients: {}", topicFilter);
         // We need to keep track of our clients subscriptions for group migration (to send our subscriptions to the new leader)
         clientSubscriptions.addSubscription(clientId, topicFilter);
 
         if (state.equals(OrchestratorState.NON_LEADER)) {
-            // Only send publish to leader as it will get relayed by the leader
+            // Only send subscribe to leader as it will get relayed by the leader
             sendMessageToLeader(PeerMessageSubscribe.fromTopicFilter(Arrays.asList(topicFilter)));
         } else if (state.equals(OrchestratorState.LEADER)) {
             anchorConnection.addSubscription(topicFilter);
+            sendMessageToGroup(PeerMessageSubscribe.fromTopicFilter(Arrays.asList(topicFilter)));
         }
     }
 

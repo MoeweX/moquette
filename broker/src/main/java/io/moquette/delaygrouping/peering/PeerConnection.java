@@ -11,10 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -22,8 +19,8 @@ import java.util.function.Consumer;
 public class PeerConnection {
     private static final Logger LOG = LoggerFactory.getLogger(PeerConnection.class);
 
-    private Map<String, BiConsumer<PeerMessage, PeerConnection>> handlers = new ConcurrentHashMap<>();
-    private Map<PeerMessageType, List<BiConsumer<PeerMessage, PeerConnection>>> handlersByType = new ConcurrentHashMap<>();
+    private Set<BiConsumer<PeerMessage, PeerConnection>> handlers = ConcurrentHashMap.newKeySet();
+    private Map<PeerMessageType, Set<BiConsumer<PeerMessage, PeerConnection>>> handlersByType = new ConcurrentHashMap<>();
     private List<Channel> channels = new ArrayList<>();
     private Bootstrap bootstrap;
     private InetSocketAddress remoteAddress;
@@ -32,14 +29,12 @@ public class PeerConnection {
     private boolean running = false;
     private Consumer<PeerConnection> newConnectionHandler;
 
-    // TODO Auto reconnect?
-
     private PeerConnection(Bootstrap bootstrap) {
         this.bootstrap = bootstrap;
 
         // Initialize handlers by type
         for (PeerMessageType type : PeerMessageType.values()) {
-            handlersByType.put(type, new ArrayList<>());
+            handlersByType.put(type, ConcurrentHashMap.newKeySet());
         }
 
         // Start message sending thread
@@ -123,26 +118,15 @@ public class PeerConnection {
         sendQueue.add(msg);
     }
 
-    public String registerMessageHandler(BiConsumer<PeerMessage, PeerConnection> handler, PeerMessageType... messageTypes) {
+    public void registerMessageHandler(BiConsumer<PeerMessage, PeerConnection> handler, PeerMessageType... messageTypes) {
         // listen for a specific message type (in order to isolate or react to a certain type of communication)
         // there can be multiple overlapping handlers
         // What about threading? Call each on a separate thread?
-        String handlerId = UUID.randomUUID().toString();
-        handlers.put(handlerId, handler);
+        handlers.add(handler);
         for (PeerMessageType type : messageTypes) {
             handlersByType.get(type).add(handler);
         }
         LOG.debug("Successfully registered message handlers for connection to {}", remoteAddress.getHostString());
-        return handlerId;
-    }
-
-    public void removeMessageHandler(String handlerId) {
-        var handler = handlers.remove(handlerId);
-        if (handler != null) {
-            for (PeerMessageType type : PeerMessageType.values()) {
-                handlersByType.get(type).remove(handler);
-            }
-        }
     }
 
     public InetAddress getRemoteAddress() {

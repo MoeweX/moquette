@@ -84,7 +84,7 @@ public class AnchorConnection {
     public void publish(MqttPublishMessage msg) {
         var topic = msg.variableHeader().topicName();
         var payload = new byte[msg.payload().readableBytes()];
-        msg.payload().readBytes(payload);
+        msg.payload().slice().readBytes(payload);
         messageStore.save(topic + new String(payload, StandardCharsets.UTF_8));
         mqttConnection.publish(new Message(topic, payload));
     }
