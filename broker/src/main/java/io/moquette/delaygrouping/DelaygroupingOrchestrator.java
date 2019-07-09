@@ -6,6 +6,7 @@ import io.moquette.delaygrouping.monitoring.ConnectionMonitor;
 import io.moquette.delaygrouping.peering.PeerConnection;
 import io.moquette.delaygrouping.peering.PeerConnectionManager;
 import io.moquette.delaygrouping.peering.messaging.*;
+import io.moquette.logging.MessageLogger;
 import io.netty.handler.codec.mqtt.MqttPublishMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,6 +41,7 @@ public class DelaygroupingOrchestrator {
     private ScheduledExecutorService mainLoopExecutor = Executors.newSingleThreadScheduledExecutor();
     private InetAddress joiningPeer;
     private int mainLoopInterval = 100;
+    private MessageLogger messageLogger;
 
     public DelaygroupingOrchestrator(DelaygroupingConfiguration config, BiConsumer<MqttPublishMessage, String> internalPublishFunction) {
         this.internalPublishFunction = internalPublishFunction;
@@ -52,6 +54,7 @@ public class DelaygroupingOrchestrator {
         peerConnectionManager = new PeerConnectionManager(localInterfaceAddress, this::handleNewPeerConnection);
         leader = null;
         joiningPeer = null;
+        messageLogger = new MessageLogger(clientId);
 
         state = OrchestratorState.BOOTSTRAP;
 
@@ -163,7 +166,7 @@ public class DelaygroupingOrchestrator {
         Double leaderDelay;
         try {
             leaderDelay = connectionMonitor.getAverageDelay(leader).get();
-            LOG.info("Leader delay: {}ms", leaderDelay);
+            //LOG.info("Leader delay: {}ms", leaderDelay);
             if (leaderDelay > latencyThreshold) {
                 LOG.info("Our leader exceed the latency threshold ({}ms > {}ms)", leaderDelay, latencyThreshold);
                 doImmediately(this::transitionToLeader);
@@ -283,6 +286,7 @@ public class DelaygroupingOrchestrator {
     }
 
     private void handlePublishMessages(PeerMessagePublish msg, PeerConnection origin) {
+        messageLogger.log(msg);
         LOG.info("Got PUBLISH from {}: {}", origin.getRemoteAddress().getHostName(), msg.getPublishMessages());
         msg.getPublishMessages().forEach(this::internalPublish);
         if (state.equals(OrchestratorState.LEADER)) {
@@ -326,6 +330,7 @@ public class DelaygroupingOrchestrator {
     }
 
     private void handleInterceptedPublish(MqttPublishMessage interceptedMsg) {
+        messageLogger.log(interceptedMsg);
         LOG.info("Intercepted PUBLISH from clients: {}", interceptedMsg);
         var peerPubMsg = PeerMessagePublish.fromMessage(interceptedMsg);
         if (state.equals(OrchestratorState.LEADER)) {
@@ -353,23 +358,13 @@ public class DelaygroupingOrchestrator {
     }
 
     private void handleAnchorPublishMessage(Message msg) {
+        messageLogger.log(msg.topic, msg.payload);
         LOG.info("Got MQTT PUBLISH from anchor: {}", msg);
         var mqttPubMsg = Utils.mqttPublishMessageFromValues(msg.topic, msg.payload);
         internalPublish(mqttPubMsg);
         if (groupSubscriptions.matches(msg.topic)) {
             sendMessageToGroup(PeerMessagePublish.fromMessage(mqttPubMsg));
         }
-    }
-
-
-    /**
-     * Makes sure groupMembers contains exactly the Elements from the given collection.
-     *
-     * @param groupMembers New set of group members to retain.
-     */
-    private void updateGroup(Collection<InetAddress> groupMembers) {
-        this.groupMembers.addAll(groupMembers);
-        this.groupMembers.retainAll(groupMembers);
     }
 
     private void sendMessageToLeader(PeerMessage msg) {
