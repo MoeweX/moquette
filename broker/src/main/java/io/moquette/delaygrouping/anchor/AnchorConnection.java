@@ -25,9 +25,8 @@ public class AnchorConnection {
     private Consumer<Message> mqttCallback;
     private MessageStore messageStore = new MessageStore();
 
-    public AnchorConnection(InetSocketAddress anchorAddress, InetAddress localAddress) {
+    public AnchorConnection(InetSocketAddress anchorAddress, InetAddress localAddress, String clientId) {
         this.localAddress = localAddress;
-        var clientId = localAddress.getHostName();
         try {
             String serverURI = "tcp://" + anchorAddress.getHostName() + ":" + anchorAddress.getPort();
             mqttConnection = new MqttConnection(serverURI, clientId);

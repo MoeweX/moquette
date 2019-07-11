@@ -22,7 +22,7 @@ public class DelaygroupingOrchestrator {
     private static final Logger LOG = LoggerFactory.getLogger(DelaygroupingOrchestrator.class);
 
     private InetSocketAddress cloudAnchor;
-    private InetAddress localInterfaceAddress;
+    private InetAddress bindAddress;
     private int latencyThreshold;
     private AnchorConnection anchorConnection;
     private String clientId;
@@ -42,25 +42,26 @@ public class DelaygroupingOrchestrator {
     private InetAddress joiningPeer;
     private int mainLoopInterval = 100;
     private MessageLogger messageLogger;
+    private InetAddress name;
 
     public DelaygroupingOrchestrator(DelaygroupingConfiguration config, BiConsumer<MqttPublishMessage, String> internalPublishFunction) {
         this.internalPublishFunction = internalPublishFunction;
         this.leadershipCapabilityMeasure = config.getLeadershipCapabilityMeasure();
         cloudAnchor = config.getAnchorNodeAddress();
         latencyThreshold = config.getLatencyThreshold();
-        this.localInterfaceAddress = config.getHost();
-        clientId = localInterfaceAddress.getHostAddress();
+        this.name = config.getName();
+        this.bindAddress = config.getBindHost();
+        clientId = config.getClientId();
         this.connectionMonitor = new ConnectionMonitor(1000, 20);
-        peerConnectionManager = new PeerConnectionManager(localInterfaceAddress, this::handleNewPeerConnection);
+        peerConnectionManager = new PeerConnectionManager(bindAddress, this::handleNewPeerConnection);
         leader = null;
         joiningPeer = null;
         messageLogger = new MessageLogger(clientId);
 
         state = OrchestratorState.BOOTSTRAP;
 
-        // Let's get this party started!
+        // Let's get this broker started!
         doNext(this::transitionToLeader);
-
     }
 
     private void doNext(Runnable runnable) {
@@ -80,12 +81,12 @@ public class DelaygroupingOrchestrator {
 
         if (leader != null) {
             LOG.info("Leaving existing group with leader {}", leader.getHostName());
-            sendMessageToLeader(PeerMessageMembership.leave(localInterfaceAddress));
+            sendMessageToLeader(PeerMessageMembership.leave(name));
             groupMembers.clear();
         }
         leader = null;
 
-        anchorConnection = new AnchorConnection(cloudAnchor, localInterfaceAddress);
+        anchorConnection = new AnchorConnection(cloudAnchor, name, clientId);
         anchorConnection.startLeaderAnnouncement();
         anchorConnection.setMqttCallback(this::handleAnchorPublishMessage);
         clientSubscriptions.getFlattened().forEach(topicFilter -> anchorConnection.addSubscription(topicFilter));
@@ -380,7 +381,7 @@ public class DelaygroupingOrchestrator {
         LOG.info("Sending message {} to group: {}", msg.type, groupMembers);
         groupMembers.forEach(member -> {
             // Don't send to ourselves
-            if (!member.equals(localInterfaceAddress)) {
+            if (!member.equals(bindAddress)) {
                 peerConnectionManager.getConnectionToPeer(member).sendMessage(msg);
             }
         });

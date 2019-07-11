@@ -44,8 +44,8 @@ public class AnchorConnectionTest {
     @Test
     public void leaderAnnouncement() throws MqttException, UnknownHostException, InterruptedException {
         // Start local mosquitto instance for that
-        var anchorConnection1 = new AnchorConnection(new InetSocketAddress("127.0.0.1", 1883), InetAddress.getByName("127.0.0.1"));
-        var anchorConnection2 = new AnchorConnection(new InetSocketAddress("127.0.0.1", 1883), InetAddress.getByName("127.0.0.2"));
+        var anchorConnection1 = new AnchorConnection(new InetSocketAddress("127.0.0.1", 1883), InetAddress.getByName("127.0.0.1"), "127.0.0.1");
+        var anchorConnection2 = new AnchorConnection(new InetSocketAddress("127.0.0.1", 1883), InetAddress.getByName("127.0.0.2"), "127.0.0.2");
 
         anchorConnection1.startLeaderAnnouncement();
         anchorConnection2.startLeaderAnnouncement();
@@ -66,8 +66,8 @@ public class AnchorConnectionTest {
         var subscriber = getTestClient("tcp://localhost:1883", "testSubscriber");
         var publisher = getTestClient("tcp://localhost:1883", "testPublisher");
 
-        var anchorConnection1 = new AnchorConnection(new InetSocketAddress("127.0.0.1", 1883), InetAddress.getByName("127.0.0.1"));
-        var anchorConnection2 = new AnchorConnection(new InetSocketAddress("127.0.0.1", 1883), InetAddress.getByName("127.0.0.2"));
+        var anchorConnection1 = new AnchorConnection(new InetSocketAddress("127.0.0.1", 1883), InetAddress.getByName("127.0.0.1"), "127.0.0.1");
+        var anchorConnection2 = new AnchorConnection(new InetSocketAddress("127.0.0.1", 1883), InetAddress.getByName("127.0.0.2"), "127.0.0.2");
 
         var receivedMessageQueue1 = new LinkedBlockingQueue<Message>();
         var receivedMessageQueue2 = new LinkedBlockingQueue<Message>();

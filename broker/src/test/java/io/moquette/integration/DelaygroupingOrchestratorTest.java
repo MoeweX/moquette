@@ -25,7 +25,8 @@ public class DelaygroupingOrchestratorTest {
             final Properties configProps = new Properties();
             configProps.setProperty("port", "1883");
             configProps.setProperty("host", host);
-            configProps.setProperty("delaygrouping_peering_host", host);
+            configProps.setProperty("delaygrouping_peering_name", host);
+            configProps.setProperty("delaygrouping_peering_bind_host", host);
             configProps.setProperty("delaygrouping_peering_port", "1884");
             configProps.setProperty("delaygrouping_threshold", "5");
             configProps.setProperty("delaygrouping_leadership_capability_measure", String.valueOf(leadershipCapabilityMeasure));

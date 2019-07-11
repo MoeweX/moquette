@@ -64,6 +64,9 @@ JAVA_OPTS="$JAVA_OPTS -XX:G1RSetUpdatingPauseTimePercent=5"
 ## 1000ms increases throughput. Keep it smaller than the timeouts.
 JAVA_OPTS="$JAVA_OPTS -XX:MaxGCPauseMillis=500"
 
+## Memory settings (-server implies 128M of max heap space)
+JAVA_OPTS="$JAVA_OPTS -Xmx256M"
+
 ## Optional G1 Settings
 
 # Save CPU time on large (>= 16GB) heaps by delaying region scanning

@@ -12,23 +12,40 @@ import java.util.Random;
 public class DelaygroupingConfiguration {
 
     private static final Logger LOG = LoggerFactory.getLogger(DelaygroupingConfiguration.class);
-
-    private InetAddress host;
+    private InetAddress name;
+    private InetAddress bindHost;
     private int port;
     private InetSocketAddress anchorNodeAddress;
     private int latencyThreshold;
     private boolean valid;
     private int leadershipCapabilityMeasure;
+    private String clientId;
 
     public DelaygroupingConfiguration(IConfig config) {
         valid = true;
 
-        var hostString = config.getProperty("delaygrouping_peering_host", "127.0.0.1");
-        try {
-            host = InetAddress.getByName(hostString);
-        } catch (UnknownHostException e) {
-            LOG.error("Invalid local peering interface address! Skipping activation. Exception: {}", e);
+        var nameString = config.getProperty("delaygrouping_peering_name");
+        if (nameString == null) {
+            LOG.error("No delaygrouping_peering_name configured. Skipping delaygrouping activation.");
             valid = false;
+            return;
+        } else {
+            try {
+                name = InetAddress.getByName(nameString);
+            } catch (UnknownHostException e) {
+                LOG.error("Invalid delaygrouping_peering_name! Skipping activation. Exception: {}", e);
+                valid = false;
+                return;
+            }
+        }
+
+        var bindHostString = config.getProperty("delaygrouping_peering_bind_host", "0.0.0.0");
+        try {
+            bindHost = InetAddress.getByName(bindHostString);
+        } catch (UnknownHostException e) {
+            LOG.error("Invalid delaygrouping_peering_bind_host! Skipping activation. Exception: {}", e);
+            valid = false;
+            return;
         }
 
         port = config.intProp("delaygrouping_peering_port", 1884);
@@ -36,6 +53,8 @@ public class DelaygroupingConfiguration {
         latencyThreshold = config.intProp("delaygrouping_threshold", 5);
 
         leadershipCapabilityMeasure = config.intProp("delaygrouping_leadership_capability_measure", new Random().nextInt());
+
+        clientId = config.getProperty("delaygrouping_client_id", name.getHostAddress());
 
         var anchorNodeAddressValue = config.getProperty("delaygrouping_anchor_node_address");
         if (anchorNodeAddressValue != null) {
@@ -46,8 +65,12 @@ public class DelaygroupingConfiguration {
         }
     }
 
-    public InetAddress getHost() {
-        return host;
+    public InetAddress getName() {
+        return name;
+    }
+
+    public InetAddress getBindHost() {
+        return bindHost;
     }
 
     public int getPort() {
@@ -68,5 +91,9 @@ public class DelaygroupingConfiguration {
 
     public int getLeadershipCapabilityMeasure() {
         return leadershipCapabilityMeasure;
+    }
+
+    public String getClientId() {
+        return clientId;
     }
 }
