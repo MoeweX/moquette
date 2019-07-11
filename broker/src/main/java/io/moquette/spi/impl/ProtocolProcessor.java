@@ -210,7 +210,7 @@ public class ProtocolProcessor {
     public void processPublish(Channel channel, MqttPublishMessage msg) {
         final MqttQoS qos = msg.fixedHeader().qosLevel();
         final String clientId = NettyUtils.clientID(channel);
-        LOG.info("Processing PUBLISH message. CId={}, topic={}, messageId={}, qos={}", clientId,
+        LOG.debug("Processing PUBLISH message. CId={}, topic={}, messageId={}, qos={}", clientId,
                  msg.variableHeader().topicName(), msg.variableHeader().messageId(), qos);
         switch (qos) {
             case AT_MOST_ONCE:
@@ -243,7 +243,7 @@ public class ProtocolProcessor {
     public void internalPublish(MqttPublishMessage msg, final String clientId) {
         final MqttQoS qos = msg.fixedHeader().qosLevel();
         final Topic topic = new Topic(msg.variableHeader().topicName());
-        LOG.info("Sending PUBLISH message. Topic={}, qos={}", topic, qos);
+        LOG.debug("Sending PUBLISH message. Topic={}, qos={}", topic, qos);
 
         IMessagesStore.StoredMessage toStoreMsg = asStoredMessage(msg);
         if (clientId == null || clientId.isEmpty()) {

@@ -49,7 +49,7 @@ class PersistentQueueMessageSender {
             LOG.debug("Sending PUBLISH message. MessageId={}, CId={}, topic={}, qos={}, payload={}", messageId,
                 clientId, topicName, qos, DebugUtils.payload2Str(pubMessage.payload()));
         } else {
-            LOG.info("Sending PUBLISH message. MessageId={}, CId={}, topic={}", messageId, clientId, topicName);
+            LOG.debug("Sending PUBLISH message. MessageId={}, CId={}, topic={}", messageId, clientId, topicName);
         }
 
         boolean messageDelivered = false;
