@@ -5,4 +5,5 @@ public enum PeerMessageType {
     PUBLISH,
     REDIRECT,
     MEMBERSHIP,
+    GROUP,
 }
