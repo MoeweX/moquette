@@ -241,14 +241,14 @@ public class DelaygroupingOrchestrator {
             case JOIN_ACKACK:
                 if (state.equals(OrchestratorState.LEADER)) {
                     if (msg.isShouldBeLeader()) {
-                        LOG.info("Got JOIN_ACKACK from {}. She joins as group member, so add her and save her state.", origin.getRemoteAddress().getHostAddress());
+                        LOG.info("Got JOIN_ACKACK from {}. She joins as group member, so add her and save her state: {}", origin.getRemoteAddress().getHostAddress(), msg);
                         groupMembers.add(origin.getRemoteAddress());
                         groupMembers.addAll(msg.getGroupMembers());
                         groupSubscriptions.merge(msg.getGroupSubscriptions());
                         sendMessageToGroup(PeerMessageGroupUpdate.update(groupMembers, groupSubscriptions));
                         LOG.info("Group members after JOIN: {}", groupMembers);
                     } else {
-                        LOG.info("Got JOIN_ACKACK from {}. She joins as leader and confirmed switching / being ready.", origin.getRemoteAddress().getHostAddress());
+                        LOG.info("Got JOIN_ACKACK from {}. She joins as leader and confirmed switching / being ready: {}", origin.getRemoteAddress().getHostAddress(), msg);
                         groupMembers.addAll(msg.getGroupMembers());
                         groupSubscriptions.merge(msg.getGroupSubscriptions());
                         transitionToNonLeader(origin.getRemoteAddress());
@@ -277,7 +277,7 @@ public class DelaygroupingOrchestrator {
             groupMembers.addAll(msg.getGroupMembers());
             groupMembers.retainAll(msg.getGroupMembers());
             groupSubscriptions.merge(msg.getGroupSubscriptions());
-            LOG.info("Got group update from {}. Updated group: {}", origin.getRemoteAddress().getHostAddress(), state.name(), groupMembers);
+            LOG.info("Got group update from {}. Updated group: {}", origin.getRemoteAddress().getHostAddress(), groupMembers);
         } else {
             LOG.info("Ignoring group update from {}.!", origin.getRemoteAddress().getHostAddress());
         }
@@ -345,7 +345,7 @@ public class DelaygroupingOrchestrator {
     private void handleNewPeerConnection(PeerConnection connection) {
         // this is run synchronously in channel initializer, so don't do anything costly here!
         connection.registerMessageHandler(this::handlePeerMessage,
-            PeerMessageType.SUBSCRIBE, PeerMessageType.PUBLISH, PeerMessageType.REDIRECT, PeerMessageType.MEMBERSHIP);
+            PeerMessageType.SUBSCRIBE, PeerMessageType.PUBLISH, PeerMessageType.REDIRECT, PeerMessageType.MEMBERSHIP, PeerMessageType.GROUP);
     }
 
     private void handleInterceptedPublish(MqttPublishMessage interceptedMsg) {
@@ -396,7 +396,7 @@ public class DelaygroupingOrchestrator {
     }
 
     private void sendMessageToGroup(PeerMessage msg) {
-        LOG.debug("Sending message {} to group: {}", msg.type, groupMembers);
+        LOG.info("Sending message {} to group: {}", msg.type, groupMembers);
         groupMembers.forEach(member -> {
             // Don't send to ourselves
             if (!member.equals(name)) {
