@@ -2,6 +2,8 @@ package io.moquette.logging;
 
 import io.moquette.delaygrouping.peering.messaging.PeerMessagePublish;
 import io.netty.handler.codec.mqtt.MqttPublishMessage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.BufferedWriter;
 import java.io.File;
@@ -12,6 +14,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MessageLogger {
+    private static final Logger LOG = LoggerFactory.getLogger(MessageLogger.class);
     private final LinkedBlockingQueue<LogMessage> messages = new LinkedBlockingQueue<>();
     private File outputFile;
     private AtomicBoolean isRunning = new AtomicBoolean(false);
@@ -34,19 +37,23 @@ public class MessageLogger {
             try (FileWriter fileWriter = new FileWriter(outputFile, true);
                  BufferedWriter bufferedWriter = new BufferedWriter(fileWriter)) {
 
+                LOG.info("Started message logger. Waiting for messages...");
+
                 while (isRunning.get() || !messages.isEmpty()) {
-                    messages.drainTo(messagesToDump);
+                    if (!messages.isEmpty()) {
+                        messages.drainTo(messagesToDump);
 
-                    messagesToDump.forEach(msg -> {
-                        output.append(msg.toLogEntry()).append("\n");
-                    });
+                        messagesToDump.forEach(msg -> {
+                            output.append(msg.toLogEntry()).append("\n");
+                        });
 
-                    bufferedWriter.write(output.toString());
+                        bufferedWriter.write(output.toString());
 
-                    messagesToDump.clear();
-                    output.setLength(0);
+                        messagesToDump.clear();
+                        output.setLength(0);
 
-                    bufferedWriter.flush();
+                        bufferedWriter.flush();
+                    }
 
                     try {
                         Thread.sleep(1000);
@@ -56,7 +63,7 @@ public class MessageLogger {
                 }
 
             } catch (IOException e) {
-                e.printStackTrace();
+                LOG.error("Error while writing log!", e);
             }
         });
         worker.start();

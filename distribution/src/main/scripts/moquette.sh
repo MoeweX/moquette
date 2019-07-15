@@ -65,7 +65,7 @@ JAVA_OPTS="$JAVA_OPTS -XX:G1RSetUpdatingPauseTimePercent=5"
 JAVA_OPTS="$JAVA_OPTS -XX:MaxGCPauseMillis=500"
 
 ## Memory settings (-server implies 128M of max heap space)
-JAVA_OPTS="$JAVA_OPTS -Xmx512M"
+JAVA_OPTS="$JAVA_OPTS -Xmx1536M"
 
 ## Optional G1 Settings
 

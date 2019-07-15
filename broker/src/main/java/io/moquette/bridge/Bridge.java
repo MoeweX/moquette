@@ -3,6 +3,7 @@ package io.moquette.bridge;
 import io.moquette.bridge.messaging.BridgeDecoder;
 import io.moquette.bridge.messaging.BridgeEncoder;
 import io.moquette.bridge.messaging.BridgeMessagePublish;
+import io.moquette.logging.MessageLogger;
 import io.moquette.server.Server;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.bootstrap.ServerBootstrap;
@@ -35,6 +36,7 @@ public class Bridge {
     private final ServerBootstrap serverBootstrap = new ServerBootstrap();
     private final ConnectionStore connectionStore;
     private final Server server;
+    private final MessageLogger messageLogger;
     private EventLoopGroup serverParentGroup;
     private EventLoopGroup serverChildGroup;
     private EventLoopGroup clientGroup;
@@ -55,6 +57,7 @@ public class Bridge {
     };
 
     public Bridge(BridgeConfiguration config, Server server, ScheduledExecutorService scheduler) {
+        this.messageLogger = new MessageLogger(config.getHost());
         this.server = server;
         this.connectionStore = new ConnectionStore(config.getBridgePeers());
         initializeClientBootstrap();
@@ -157,4 +160,7 @@ public class Bridge {
         server.internalPublish(message, null);
     }
 
+    public MessageLogger getMessageLogger() {
+        return messageLogger;
+    }
 }

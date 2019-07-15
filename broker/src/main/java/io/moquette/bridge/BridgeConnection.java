@@ -86,6 +86,7 @@ public class BridgeConnection {
         LOG.info("Doing internal publish to clients...");
         for (MqttPublishMessage mqttPubMsg : incomingMessage.getPublishMessages()) {
             // Internal handlePublish to interested clients
+            parent.getMessageLogger().log(mqttPubMsg);
             parent.internalPublish(mqttPubMsg);
         }
     }

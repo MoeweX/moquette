@@ -33,6 +33,7 @@ public class BridgeInterceptHandler extends AbstractInterceptHandler {
             MqttPublishMessage pubMsg = (MqttPublishMessage) pubMsgField.get(msg);
 
             BridgeMessagePublish publishMessage = new BridgeMessagePublish(Arrays.asList(pubMsg));
+            bridge.getMessageLogger().log(pubMsg);
             bridge.bridgePublish(publishMessage);
         } catch (NoSuchFieldException | IllegalAccessException ex) {
             LOG.error("Error while retrieving MQTT messages from intercepted message.", ex);
