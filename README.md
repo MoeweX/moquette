@@ -1,4 +1,8 @@
 
+This repository contains the changes necessary to faciliate broadcast groups.
+The main idea behind broadcast groups is to separate a set of Edge brokers from the rest of the network so that they can communicate directly using flooding, which is similar to creating wilcard bridges between brokers.
+Global communication is handled via a (massively scaleable) Cloud broker.
+
 ## What is Moquette?
 
 [![Build Status](https://api.travis-ci.org/andsel/moquette.svg?branch=master)](https://travis-ci.org/andsel/moquette)
