@@ -1,4 +1,5 @@
-# Broadcast Group Broker Implementation (based on Moquette)
+# Broadcast Group Broker Implementation
+## based on Moquette
 
 This project is part of the Broadcast Group Project which includes the following subprojects:
 * [Broker Implementation](https://github.com/MoeweX/moquette): Extension of moquette that supports broadcast groups
