@@ -10,13 +10,13 @@ Today, communication between IoT devices heavily relies on fog-based publish/sub
 If you use this software in a publication, please cite it as:
 
 ### Text
-TODO
+will be added later
 
-Experiments related with this publication are based on [commit](https://github.com/MoeweX/moquette/commit/a964cadc1083fe695eb5eb3022a8bef5ec9a7f06).
+Experiments related with this publication are based on [commit](https://github.com/MoeweX/moquette/tree/a964cadc1083fe695eb5eb3022a8bef5ec9a7f06).
 
 ### BibTeX
 ```
-TODO
+will be added later
 ```
 
 A full list of our [publications](https://www.mcc.tu-berlin.de/menue/forschung/publikationen/parameter/en/) and [prototypes](https://www.mcc.tu-berlin.de/menue/forschung/prototypes/parameter/en/) is available on our group website.
